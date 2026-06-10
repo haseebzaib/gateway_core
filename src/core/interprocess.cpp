@@ -31,17 +31,31 @@ namespace core
 
             if(socket.is_connected())
             {
-             socket.send_data("hello from server " + std::to_string(counter++) + "\n");
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        
+            //  socket.send_data("hello from server " + std::to_string(counter++) + "\n"); 
+             
+             std::optional<std::span<const std::uint8_t>> data = socket.get_received();
+
+             if(data.has_value())
+             {
+
+                 SPDLOG_INFO("Rx recived on wire {}", std::string_view(reinterpret_cast<const char*>(data->data()), data->size()));
+
+             }
+
+             message_protocol.loop(*data);
+             
+             
+
             }
 
             if(socket.get_state() == module::ipc::tcpSocket::state::closed || socket.get_state() == module::ipc::tcpSocket::state::error)
             {
                 socket.start_server(8765);
+
+
             }
 
-            //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         }
     }

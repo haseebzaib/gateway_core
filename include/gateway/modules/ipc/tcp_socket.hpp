@@ -6,6 +6,7 @@
 #include "stdint.h"
 #include <type_traits>
 #include <span>
+#include <optional>
 
 namespace module
 {
@@ -51,6 +52,8 @@ namespace module
                 return send_data(std::as_bytes(std::span<const T, 1>{&value, 1}));
             }
 
+            std::optional<std::span<const std::uint8_t>> get_received();
+
             bool is_connected();
             void close();
 
@@ -64,10 +67,12 @@ namespace module
             int socket_fd_ = -1;
 
             state state_ = state::idle;
-            std::array<std::uint8_t, 1024> tx_buffer_;
-            std::array<std::uint8_t, 1024> rx_buffer_;
+            std::array<std::uint8_t, 100000> tx_buffer_;
+            std::array<std::uint8_t, 100000> rx_buffer_;
             std::size_t tx_size_ = 0;
             std::size_t tx_offset_ = 0;
+            std::size_t rx_size = 0;
+            std::size_t rx_pos =0;
         };
 
     }

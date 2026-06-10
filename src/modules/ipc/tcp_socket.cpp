@@ -253,6 +253,20 @@ namespace module
         }
 
 
+            std::optional<std::span<const std::uint8_t>> tcpSocket::get_received() {
+
+                if(rx_size == 0)
+                {
+                    return std::nullopt;
+                }
+                int size = rx_size;
+                rx_size = 0;
+
+                return std::span<const std::uint8_t>{rx_buffer_.data(),size};
+                
+            }
+
+
 
         bool tcpSocket::create_socket()
         {
@@ -303,6 +317,7 @@ namespace module
                 if (n > 0)
                 {
                     std::copy(buffer, buffer + n, rx_buffer_.begin());
+                    rx_size = n;
 
                     SPDLOG_INFO("Rx recived {}", std::string_view(reinterpret_cast<char*>(buffer), n));
                 }
