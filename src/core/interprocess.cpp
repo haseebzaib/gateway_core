@@ -31,9 +31,14 @@ namespace core
 
             if(socket.is_connected())
             {
-        socket.send_data("hello from server " + std::to_string(counter++) + "\n");
+             socket.send_data("hello from server " + std::to_string(counter++) + "\n");
             std::this_thread::sleep_for(std::chrono::seconds(1));
         
+            }
+
+            if(socket.get_state() == module::ipc::tcpSocket::state::closed || socket.get_state() == module::ipc::tcpSocket::state::error)
+            {
+                socket.start_server(8765);
             }
 
             //std::this_thread::sleep_for(std::chrono::milliseconds(1000));

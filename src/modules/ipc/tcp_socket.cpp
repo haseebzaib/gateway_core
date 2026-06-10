@@ -23,13 +23,14 @@ namespace module
 
         bool tcpSocket::start_server(std::uint16_t port)
         {
+             SPDLOG_INFO("Starting Server ");
             close();
 
             listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
 
             if (listen_fd_ < 0)
             {
-                SPDLOG_ERROR("IPC socket create failed: {}", std::strerror(errno));
+                SPDLOG_INFO("IPC socket create failed: {}", std::strerror(errno));
                 return false;
             }
 
@@ -42,21 +43,21 @@ namespace module
 
             if (bind(listen_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0)
             {
-                SPDLOG_ERROR("IPC bind failed on port {}: {}", port, std::strerror(errno));
+                SPDLOG_INFO("IPC bind failed on port {}: {}", port, std::strerror(errno));
                 close();
                 return false;
             }
 
             if (listen(listen_fd_, 1) < 0)
             {
-                SPDLOG_ERROR("IPC listen failed on port {}: {}", port, std::strerror(errno));
+                SPDLOG_INFO("IPC listen failed on port {}: {}", port, std::strerror(errno));
                 close();
                 return false;
             }
 
             if (!set_non_blocking(listen_fd_))
             {
-                SPDLOG_ERROR("IPC set listen socket non-blocking failed: {}", std::strerror(errno));
+                SPDLOG_INFO("IPC set listen socket non-blocking failed: {}", std::strerror(errno));
                 close();
                 return false;
             }
@@ -79,7 +80,7 @@ namespace module
 
             if (!set_non_blocking(socket_fd_))
             {
-                SPDLOG_ERROR("IPC set client socket non-blocking failed: {}", std::strerror(errno));
+                SPDLOG_INFO("IPC set client socket non-blocking failed: {}", std::strerror(errno));
                 close();
                 return false;
             }
@@ -159,6 +160,7 @@ namespace module
                 {
                     close();
                     state_ = state::error;
+                    SPDLOG_INFO("Client disconnected ");
                     return -1;
                 }
 
@@ -201,6 +203,7 @@ namespace module
         }
         void tcpSocket::close()
         {
+            SPDLOG_INFO("Closing connection ");
             if (socket_fd_ >= 0)
             {
                 ::close(socket_fd_);
@@ -301,11 +304,11 @@ namespace module
                 {
                     std::copy(buffer, buffer + n, rx_buffer_.begin());
 
-                    SPDLOG_DEBUG("Rx recived {}", rx_buffer_);
+                    SPDLOG_INFO("Rx recived {}", std::string_view(reinterpret_cast<char*>(buffer), n));
                 }
                 else if (n == 0)
                 {
-                    SPDLOG_DEBUG("Peer connection closed");
+                    SPDLOG_INFO("Peer connection closed");
                     close();
                     return;
                 }
