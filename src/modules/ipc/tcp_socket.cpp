@@ -10,11 +10,9 @@
 #include <algorithm>
 #include <cerrno>
 
-namespace module
+namespace module::ipc
 {
 
-    namespace ipc
-    {
 
         tcpSocket::~tcpSocket()
         {
@@ -368,6 +366,6 @@ namespace module
                 }
             }
         }
-    }
+    
 
 }

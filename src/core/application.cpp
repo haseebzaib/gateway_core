@@ -1,6 +1,7 @@
 #include "spdlog/spdlog.h"
 #include "gateway/core/application.hpp"
 #include "gateway/core/interprocess.hpp"
+#include "gateway/core/sensorprocess.hpp"
 #include "thread"
 #include "chrono"
 
@@ -16,6 +17,7 @@ namespace core{
         {
           SPDLOG_INFO("Application started");
           std::jthread threadIpc(core::interprocess::main);
+          std::jthread threadSensorProcess(core::sensorprocess::main);
         }
 
 

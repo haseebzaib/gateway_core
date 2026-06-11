@@ -42,7 +42,7 @@ namespace core
 
              }
 
-             message_protocol.loop(*data);
+            //  message_protocol.loop(*data);
              
              
 

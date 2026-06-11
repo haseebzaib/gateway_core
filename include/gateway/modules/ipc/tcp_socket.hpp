@@ -8,11 +8,9 @@
 #include <span>
 #include <optional>
 
-namespace module
+namespace module::ipc
 {
 
-    namespace ipc
-    {
 
         class tcpSocket
         {
@@ -75,6 +73,6 @@ namespace module
             std::size_t rx_pos =0;
         };
 
-    }
+    
 
 }

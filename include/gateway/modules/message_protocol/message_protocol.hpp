@@ -40,11 +40,9 @@
  * **/
 
 
-namespace module 
+namespace module::message_protocol 
 {
 
-    namespace message_protocol
-    {
 
         class messageProtocol
         {
@@ -87,6 +85,6 @@ namespace module
 
 
 
-    }
+    
     
 }

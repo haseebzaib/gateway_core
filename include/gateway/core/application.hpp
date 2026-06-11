@@ -3,11 +3,11 @@
 
 
 
-namespace core 
+namespace core::application 
 {
-    namespace application {
+   
         void run();
-    }
+    
 }
 
 

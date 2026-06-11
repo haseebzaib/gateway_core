@@ -3,10 +3,10 @@
 
 
 
-namespace core 
+namespace core::interprocess 
 {
-    namespace interprocess {
+
         void main();
-    }
+    
 }
 

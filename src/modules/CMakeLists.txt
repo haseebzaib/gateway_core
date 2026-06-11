@@ -1,2 +1,5 @@
 add_subdirectory(ipc)
 add_subdirectory(message_protocol)
+add_subdirectory(serial)
+add_subdirectory(modbus)
+add_subdirectory(dustrak)
