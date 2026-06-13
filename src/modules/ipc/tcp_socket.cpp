@@ -257,7 +257,7 @@ namespace module::ipc
                 {
                     return std::nullopt;
                 }
-                int size = rx_size;
+                std::size_t size = rx_size;
                 rx_size = 0;
 
                 return std::span<const std::uint8_t>{rx_buffer_.data(),size};

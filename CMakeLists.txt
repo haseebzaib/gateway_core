@@ -15,7 +15,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 
+add_subdirectory(third_party/spdlog EXCLUDE_FROM_ALL)
 add_subdirectory(src/core)
 add_subdirectory(src/modules)
 add_subdirectory(apps)
-add_subdirectory(third_party/spdlog)
