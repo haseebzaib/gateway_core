@@ -89,9 +89,11 @@ namespace core::deviceprocess
             return static_cast<float>(std::strtol(s.c_str(), nullptr, 10)) / 1000.0f;
         }
 
-        std::uint32_t read_freq_mhz()
+        std::uint32_t read_freq_mhz(unsigned cpu)
         {
-            const std::string s = read_file("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq");
+            const std::string path =
+                "/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/cpufreq/scaling_cur_freq";
+            const std::string s = read_file(path.c_str());
             if (s.empty())
                 return 0;
             return static_cast<std::uint32_t>(std::strtoul(s.c_str(), nullptr, 10) / 1000); // kHz -> MHz
@@ -231,8 +233,12 @@ namespace core::deviceprocess
             }
             prev = std::move(cur);
 
-            m.cpuTemp    = read_temp_c();
-            m.cpuFreqMhz = read_freq_mhz();
+            m.cpuTemp = read_temp_c();
+
+            // current clock for each core (same path pattern per cpuN)
+            m.perCoreFreqMhz.reserve(m.coreCount);
+            for (unsigned i = 0; i < m.coreCount; ++i)
+                m.perCoreFreqMhz.push_back(read_freq_mhz(i));
 
             double load[3] = {0, 0, 0};
             if (getloadavg(load, 3) == 3)
@@ -257,18 +263,23 @@ namespace core::deviceprocess
 
             m.uptimeSec = read_uptime_sec();
 
-            // build "c0=12.3 c1=5.0 ..." for the per-core column
+            // build "c0=12.3 c1=5.0 ..." for the per-core usage column
             std::string perCore;
             for (std::size_t i = 0; i < m.perCoreUsage.size(); ++i)
                 perCore += fmt::format("c{}={:.1f} ", i, m.perCoreUsage[i]);
 
+            // build "c0=1500 c1=600 ..." MHz for the per-core freq column
+            std::string perFreq;
+            for (std::size_t i = 0; i < m.perCoreFreqMhz.size(); ++i)
+                perFreq += fmt::format("c{}={} ", i, m.perCoreFreqMhz[i]);
+
             SPDLOG_INFO(
                 "deviceMetrics ts={} cpu={:.1f}% cores={} [{}] temp={:.1f}C "
-                "freq={}MHz load={:.2f}/{:.2f}/{:.2f} throttle=0x{:X} "
+                "freqMHz=[{}] load={:.2f}/{:.2f}/{:.2f} throttle=0x{:X} "
                 "ram={:.0f}/{:.0f}MB swap={:.0f}MB disk={:.1f}% "
                 "emmc={:.0f}/{:.0f}MB life={}% up={}s",
                 m.timestamp_ms, m.cpuUsage, static_cast<unsigned>(m.coreCount), perCore,
-                m.cpuTemp, m.cpuFreqMhz, m.loadAvg1m, m.loadAvg5m, m.loadAvg15m,
+                m.cpuTemp, perFreq, m.loadAvg1m, m.loadAvg5m, m.loadAvg15m,
                 static_cast<unsigned>(m.throttleFlags), m.ramUsedMb, m.ramTotalMb, m.swapUsedMb,
                 m.diskUsedPct, m.emmcUsedMb, m.emmcTotalMb, static_cast<unsigned>(m.emmcLifeUsed),
                 m.uptimeSec);

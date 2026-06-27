@@ -63,7 +63,7 @@ namespace module::message_protocol
       float cpuUsage;                    // overall busy %, 0-100
       std::vector<float> perCoreUsage;   // per-core %, size == coreCount
       float cpuTemp;                     // SoC temp °C (single sensor on Pi)
-      std::uint32_t cpuFreqMhz;          // current ARM clock (shared policy)
+      std::vector<std::uint32_t> perCoreFreqMhz; // current clock per core, size == coreCount
       float loadAvg1m;
       float loadAvg5m;
       float loadAvg15m;

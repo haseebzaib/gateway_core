@@ -27,8 +27,8 @@ namespace module::message_protocol
             {"coreCount",     deviceData.coreCount},
             {"cpuUsage",      deviceData.cpuUsage},
             {"perCoreUsage",  deviceData.perCoreUsage},   // JSON array, len == coreCount
-            {"cpuTemp",       deviceData.cpuTemp},
-            {"cpuFreqMhz",    deviceData.cpuFreqMhz},
+            {"cpuTemp",        deviceData.cpuTemp},
+            {"perCoreFreqMhz", deviceData.perCoreFreqMhz},  // JSON array, len == coreCount
             {"loadAvg1m",     deviceData.loadAvg1m},
             {"loadAvg5m",     deviceData.loadAvg5m},
             {"loadAvg15m",    deviceData.loadAvg15m},
