@@ -24,18 +24,23 @@ namespace module::message_protocol
         // knows to parse this object.
         msg["data"] = {
             {"timestamp_ms",  deviceData.timestamp_ms},
+            {"coreCount",     deviceData.coreCount},
             {"cpuUsage",      deviceData.cpuUsage},
+            {"perCoreUsage",  deviceData.perCoreUsage},   // JSON array, len == coreCount
             {"cpuTemp",       deviceData.cpuTemp},
             {"cpuFreqMhz",    deviceData.cpuFreqMhz},
             {"loadAvg1m",     deviceData.loadAvg1m},
+            {"loadAvg5m",     deviceData.loadAvg5m},
+            {"loadAvg15m",    deviceData.loadAvg15m},
             {"throttleFlags", deviceData.throttleFlags},
             {"ramUsedMb",     deviceData.ramUsedMb},
             {"ramTotalMb",    deviceData.ramTotalMb},
-            {"swapUsedMb",    deviceData.swapUsebMb},
-            {"diskUsedPct",   deviceData.disUsedPct},
+            {"swapUsedMb",    deviceData.swapUsedMb},
+            {"diskUsedPct",   deviceData.diskUsedPct},
             {"emmcUsedMb",    deviceData.emmcUsedMb},
             {"emmcTotalMb",   deviceData.emmcTotalMb},
-            {"emmcLifeUsed",  deviceData.emmcLifeUsed}
+            {"emmcLifeUsed",  deviceData.emmcLifeUsed},
+            {"uptimeSec",     deviceData.uptimeSec}
         };
 
         // newline-delimited so the receiver can frame messages off the stream.

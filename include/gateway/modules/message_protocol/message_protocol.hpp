@@ -57,18 +57,31 @@ namespace module::message_protocol
     struct deviceMetrics
     {
       std::uint64_t timestamp_ms;
-      float cpuUsage;
-      float cpuTemp;
-      std::uint32_t cpuFreqMhz;
+
+      // --- cpu ---
+      std::uint8_t coreCount;            // online cores now (4 today, may change)
+      float cpuUsage;                    // overall busy %, 0-100
+      std::vector<float> perCoreUsage;   // per-core %, size == coreCount
+      float cpuTemp;                     // SoC temp °C (single sensor on Pi)
+      std::uint32_t cpuFreqMhz;          // current ARM clock (shared policy)
       float loadAvg1m;
-      std::uint8_t throttleFlags;
+      float loadAvg5m;
+      float loadAvg15m;
+      std::uint8_t throttleFlags;        // vcgencmd low bits; 0 if unavailable
+
+      // --- memory ---
       float ramUsedMb;
       float ramTotalMb;
-      float swapUsebMb;
-      float disUsedPct;
+      float swapUsedMb;
+
+      // --- storage (root fs / eMMC) ---
+      float diskUsedPct;
       float emmcUsedMb;
       float emmcTotalMb;
-      std::uint8_t emmcLifeUsed;
+      std::uint8_t emmcLifeUsed;         // 0-100 %, 0 if unavailable
+
+      // --- misc ---
+      std::uint64_t uptimeSec;
     };
 
     // public so the JSON serializer (NLOHMANN_JSON_SERIALIZE_ENUM below the
