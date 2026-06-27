@@ -1,4 +1,4 @@
-#pragma
+#pragma once
 #include "cstdint"
 #include "string"
 #include "string_view"
@@ -7,12 +7,21 @@
 #include <type_traits>
 #include <span>
 #include <optional>
+#include <atomic>
+#include <cstdint>
+#include <random>
 
+#include <queue>
+#include <mutex>
+#include <optional>
+#include <vector>
+#include <cstdint>
+#include "gateway/utils/thirdparty/json.hpp"
 
 /**
- * vision behind current message structure is that we send data in json like following 
+ * vision behind current message structure is that we send data in json like following
  * {"rs232Config" { "serial" {"bauderate":  , so on serial setting}, "Dustrak" { here comes dustrak setting}  }},
- * now if we have m,ultiple other configs as well they all get combined like following 
+ * now if we have m,ultiple other configs as well they all get combined like following
  * {"rs485ModbusConfig" {}} and so on  , {"ack_required": true} at the end of message
  * each appl;ication if wanting ack wait for 2seconds and if not recived or 5seconds send same message again untill ack recived
  * {
@@ -39,52 +48,76 @@
 }
  * **/
 
-
-namespace module::message_protocol 
+namespace module::message_protocol
 {
 
+  class messageProtocol
+  {
+  public:
+    struct deviceMetrics
+    {
+      std::uint64_t timestamp_ms;
+      float cpuUsage;
+      float cpuTemp;
+      std::uint32_t cpuFreqMhz;
+      float loadAvg1m;
+      std::uint8_t throttleFlags;
+      float ramUsedMb;
+      float ramTotalMb;
+      float swapUsebMb;
+      float disUsedPct;
+      float emmcUsedMb;
+      float emmcTotalMb;
+      std::uint8_t emmcLifeUsed;
+    };
 
-        class messageProtocol
-        {
-            public:
+    // public so the JSON serializer (NLOHMANN_JSON_SERIALIZE_ENUM below the
+    // class) can name the type. Values pinned so the wire format stays stable
+    // even if entries are reordered later.
+    enum class messageType
+    {
+      unKnown       = 0,
+      deviceData    = 1,
+      deviceAnamoly = 2,
+      ack           = 3,
+      nAck          = 4,
+      status        = 5,
+      heartBeat     = 6,
+    };
 
-            
-            
-            private:
-            enum class messageType {
-                unKnown,
-                rs232Config,
-                rs485ModbusConfig,
-                tcpModbusConfig,
-                sensorDustrakDataPort0,
-                sensorDustrakDataPort1,
-                sensorRs485ModbusPort0,
-                sensorRs485ModbusPort1,
-                sensorTcpModbusCon0,
-                sensorTcpModbusCon1,
-                sensorTcpModbusCon2,
-                sensorTcpModbusCon3,
-                sensorTcpModbusCon4,
-                sensorTcpModbusCon5,
-                sensorTcpModbusCon6,
-                sensorTcpModbusCon7,
-                sensorTcpModbusCon8,
-                sensorTcpModbusCon9,
-                sensorTcpModbusCon10,
+    messageProtocol();
+    ~messageProtocol();
 
-                ack,
-                nAck,
-                status,
-                heartBeat,
+    void send_device_data(deviceMetrics deviceData);
+    void send_device_anamoly();
 
-            };
+    std::optional<std::vector<std::uint8_t>> get_next_tx();
 
+  private:
+    std::uint64_t next_message_id();
 
-        };
+    std::mutex tx_mutex_;
+    std::queue<std::vector<std::uint8_t>> tx_queue_;
+    std::queue<std::vector<std::uint8_t>> rx_queue_;
+    std::queue<std::vector<std::uint8_t>> ack_required_queue_;
 
+    std::string rx_buffer_;
 
+    std::uint64_t startupRandom_{0};
+    std::atomic<std::uint64_t> counter_{1};
+  };
 
+  // Serializes messageType to/from its name string, e.g. "deviceData".
+  // Must live at namespace scope (not inside the class) and after the enum
+  // is fully defined. Found via ADL when assigning into an nlohmann::json.
+  NLOHMANN_JSON_SERIALIZE_ENUM(messageProtocol::messageType, {
+      {messageProtocol::messageType::unKnown,       "unknown"},
+      {messageProtocol::messageType::deviceData,    "deviceData"},
+      {messageProtocol::messageType::deviceAnamoly, "deviceAnamoly"},
+      {messageProtocol::messageType::ack,           "ack"},
+      {messageProtocol::messageType::nAck,          "nAck"},
+      {messageProtocol::messageType::status,        "status"},
+      {messageProtocol::messageType::heartBeat,     "heartBeat"},
+  })
 
-    
-    
 }

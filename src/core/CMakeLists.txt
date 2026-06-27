@@ -5,6 +5,8 @@ add_library(core
 application.cpp
 interprocess.cpp
 sensorprocess.cpp
+deviceprocess.cpp
+
 )
 
 

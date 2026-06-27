@@ -1,4 +1,4 @@
-#pragma
+#pragma once
 #include "cstdint"
 #include "string"
 #include "string_view"
@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <span>
 #include <optional>
+#include <deque>
+#include <vector>
 
 namespace module::ipc
 {
@@ -65,10 +67,10 @@ namespace module::ipc
             int socket_fd_ = -1;
 
             state state_ = state::idle;
-            std::array<std::uint8_t, 100000> tx_buffer_;
+            // outgoing messages, each a complete frame; front is in-flight.
+            std::deque<std::vector<std::uint8_t>> tx_queue_;
+            std::size_t tx_offset_ = 0; // bytes of tx_queue_.front() already sent
             std::array<std::uint8_t, 100000> rx_buffer_;
-            std::size_t tx_size_ = 0;
-            std::size_t tx_offset_ = 0;
             std::size_t rx_size = 0;
             std::size_t rx_pos =0;
         };
