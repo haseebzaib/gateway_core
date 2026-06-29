@@ -24,4 +24,5 @@ target_link_libraries(core
         module_serial
         module_message_protocol
         module_modbus
+        module_anomaly_detection
 )

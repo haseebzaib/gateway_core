@@ -1,5 +1,3 @@
-
-
 add_library(module_message_protocol
 message_protocol.cpp
 )
@@ -16,3 +14,5 @@ target_link_libraries(module_message_protocol
     PUBLIC
         spdlog::spdlog_header_only
 ) 
+
+

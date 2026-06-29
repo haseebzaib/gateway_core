@@ -1,6 +1,8 @@
 #include "gateway/core/deviceprocess.hpp"
 #include "gateway/core/interprocess.hpp"
 #include "gateway/modules/message_protocol/message_protocol.hpp"
+#include "gateway/modules/anomaly_detection/detector.hpp"
+#include "gateway/modules/anomaly_detection/threshold_detector.hpp"
 
 #include "thread"
 #include "chrono"
@@ -15,22 +17,253 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <sys/statvfs.h>
 
 namespace core::deviceprocess
 {
+
     namespace
     {
         using deviceMetrics = module::message_protocol::messageProtocol::deviceMetrics;
 
         constexpr int kSampleIntervalMs = 1000; // how often we sample + send
-        constexpr int kEmmcLifeEveryN   = 2500; // refresh slow eMMC-life read every N cycles
+        constexpr int kEmmcLifeEveryN = 2500;   // refresh slow eMMC-life read every N cycles
+
+        std::vector<anomaly_detection::thresholdRule> thresholdRules;
+        std::vector<std::unique_ptr<anomaly_detection::baseDetector>> anomalyDetectors;
+        anomaly_detection::metricSnapshot deviceMetricsSnapshot;
+
+        void threshold_rule_creator(std::string_view metricName, double warningLimit, double criticalLimit, bool triggerAbove, std::string_view message)
+        {
+            thresholdRules.push_back(anomaly_detection::thresholdRule{
+                .metricName = std::string{metricName},
+                .warningLimit = warningLimit,
+                .criticalLimit = criticalLimit,
+                .triggerAbove = triggerAbove,
+                .message = std::string{message}});
+        }
+
+        void make_threshold_rule_creator()
+        {
+            /*
+             * CPU usage
+             * High CPU for a short time is normal.
+             * Threshold detector should ideally have debounce/duration later.
+             */
+            threshold_rule_creator(
+                "cpu.usage",
+                85.0,
+                95.0,
+                true,
+                "CPU usage is high. Check for stuck process, infinite loop, heavy task, or unexpected background load.");
+
+            /*
+             * CPU temperature
+             * These are reasonable generic embedded Linux limits.
+             * Tune per board after testing.
+             */
+            threshold_rule_creator(
+                "cpu.temp",
+                75.0,
+                85.0,
+                true,
+                "CPU temperature is high. Check enclosure airflow, heatsink contact, ambient temperature, and CPU load.");
+
+            /*
+             * Load average normalized would be better.
+             * If using raw load average on 4-core device:
+             * warning 4 means fully loaded, critical 6 means overloaded.
+             */
+            threshold_rule_creator(
+                "cpu.load_1m",
+                4.0,
+                6.0,
+                true,
+                "1-minute system load is high. Device may be overloaded; check CPU-heavy tasks or blocked processes.");
+
+            threshold_rule_creator(
+                "cpu.load_5m",
+                4.0,
+                6.0,
+                true,
+                "5-minute system load is high. Load is sustained; check long-running CPU or I/O bound tasks.");
+
+            threshold_rule_creator(
+                "cpu.load_15m",
+                4.0,
+                6.0,
+                true,
+                "15-minute system load is high. Device has been overloaded for a long time; investigate services and logs.");
+
+            /*
+             * Raspberry Pi throttling flags.
+             * 0 means no throttling flag.
+             * Anything above 0 means some throttling/undervoltage event is present.
+             */
+            threshold_rule_creator(
+                "cpu.throttle_flags",
+                0.0,
+                1.0,
+                true,
+                "CPU throttling or undervoltage flag detected. Check power supply, thermal throttling, and board cooling.");
+
+            /*
+             * RAM used percentage.
+             * Better than raw MB because devices may have different RAM sizes.
+             */
+            threshold_rule_creator(
+                "memory.ram_used_pct",
+                80.0,
+                90.0,
+                true,
+                "RAM usage is high. Check memory leak, heavy process, cache growth, or reduce running services.");
+
+            /*
+             * Swap usage.
+             * Any swap usage is not always bad, but high swap on embedded devices can mean memory pressure.
+             * If your device normally never swaps, lower these values.
+             */
+            threshold_rule_creator(
+                "memory.swap_used_mb",
+                128.0,
+                512.0,
+                true,
+                "Swap usage is high. Device may be under memory pressure; check RAM usage and possible memory leak.");
+
+            /*
+             * Disk usage.
+             */
+            threshold_rule_creator(
+                "storage.disk_used_pct",
+                80.0,
+                90.0,
+                true,
+                "Disk usage is high. Clean old logs, rotate logs, remove temporary files, or increase storage.");
+
+            /*
+             * eMMC life used.
+             * This is wear indicator. It does not usually recover.
+             */
+            threshold_rule_creator(
+                "storage.emmc_life_used_pct",
+                70.0,
+                90.0,
+                true,
+                "eMMC lifetime usage is high. Storage wear is increasing; reduce writes, check logging, and plan replacement.");
+
+            /*
+             * Uptime too low can indicate frequent reboot/crash loop.
+             * triggerAbove = false means alert when value is below limit.
+             *
+             * This rule is useful only if checked after boot grace period.
+             */
+            threshold_rule_creator(
+                "system.uptime_sec",
+                300.0,
+                60.0,
+                false,
+                "System uptime is very low. Device may have recently rebooted; check crash logs, watchdog, power loss, or kernel panic.");
+        }
+
+        void add_metric(anomaly_detection::metricSnapshot &snapshot,
+                        const std::string &name,
+                        double value,
+                        std::uint64_t timestamp_ms,
+                        anomaly_detection::metricType type)
+        {
+            anomaly_detection::metricSample sample;
+
+            sample.name = name;
+            sample.value = value;
+            sample.timestamp_ms = timestamp_ms;
+            sample.type = type;
+
+            snapshot.samples.push_back(sample);
+        }
+
+        void make_device_metric_snapshot(const deviceMetrics &m)
+        {
+            deviceMetricsSnapshot.timestamp_ms = m.timestamp_ms;
+
+            add_metric(deviceMetricsSnapshot, "cpu.usage", m.cpuUsage, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "cpu.temp", m.cpuTemp, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "cpu.load_1m", m.loadAvg1m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "cpu.load_5m", m.loadAvg5m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "cpu.load_15m", m.loadAvg15m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "cpu.core_count", m.coreCount, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+
+            for (std::size_t i = 0; i < m.perCoreUsage.size(); ++i)
+            {
+                std::string metricName = "cpu.core" + std::to_string(i) + ".usage";
+
+                add_metric(deviceMetricsSnapshot,
+                           metricName,
+                           m.perCoreUsage[i],
+                           m.timestamp_ms,
+                           anomaly_detection::metricType::Gauge);
+            }
+
+            for (std::size_t i = 0; i < m.perCoreFreqMhz.size(); ++i)
+            {
+                std::string metricName = "cpu.core" + std::to_string(i) + ".freq_mhz";
+
+                add_metric(deviceMetricsSnapshot,
+                           metricName,
+                           m.perCoreFreqMhz[i],
+                           m.timestamp_ms,
+                           anomaly_detection::metricType::Gauge);
+            }
+
+            add_metric(deviceMetricsSnapshot, "cpu.throttle_flags", m.throttleFlags, m.timestamp_ms, anomaly_detection::metricType::Flag);
+
+            add_metric(deviceMetricsSnapshot, "memory.ram_used_mb", m.ramUsedMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "memory.ram_total_mb", m.ramTotalMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+
+            if (m.ramTotalMb > 0.0f)
+            {
+                double ramUsedPercent = static_cast<double>(m.ramUsedMb / m.ramTotalMb) * 100.0;
+
+                add_metric(deviceMetricsSnapshot,
+                           "memory.ram_used_pct",
+                           ramUsedPercent,
+                           m.timestamp_ms,
+                           anomaly_detection::metricType::Gauge);
+            }
+
+            add_metric(deviceMetricsSnapshot, "memory.swap_used_mb", m.swapUsedMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+
+            add_metric(deviceMetricsSnapshot, "storage.disk_used_pct", m.diskUsedPct, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "storage.emmc_used_mb", m.emmcUsedMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "storage.emmc_total_mb", m.emmcTotalMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            add_metric(deviceMetricsSnapshot, "storage.emmc_life_used_pct", m.emmcLifeUsed, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+
+            add_metric(deviceMetricsSnapshot,
+                       "system.uptime_sec",
+                       static_cast<double>(m.uptimeSec),
+                       m.timestamp_ms,
+                       anomaly_detection::metricType::Gauge);
+        }
+
+        void init_anomaly_detectors()
+        {
+            make_threshold_rule_creator();
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::thresholdDetector>(thresholdRules));
+        }
+
+        void run_anomaly_detectors()
+        {
+            for (const std::unique_ptr<anomaly_detection::baseDetector> &anomalyDetector : anomalyDetectors)
+            {
+                std::vector<anomaly_detection::anomalyEvent> anomalyEvents = anomalyDetector->update(deviceMetricsSnapshot);
+            }
+        }
 
         // One CPU's accumulated jiffies, split into busy vs idle.
         struct CpuTime
         {
             std::uint64_t total = 0;
-            std::uint64_t idle  = 0;
+            std::uint64_t idle = 0;
         };
 
         // index 0 = aggregate ("cpu"), 1..N = per core ("cpu0".."cpuN-1")
@@ -117,13 +350,17 @@ namespace core::deviceprocess
             std::uint64_t memTotal = 0, memAvail = 0, swapTotal = 0, swapFree = 0;
             while (f >> key >> val >> unit)
             {
-                if (key == "MemTotal:")       memTotal  = val;
-                else if (key == "MemAvailable:") memAvail = val;
-                else if (key == "SwapTotal:")  swapTotal = val;
-                else if (key == "SwapFree:")   swapFree  = val;
+                if (key == "MemTotal:")
+                    memTotal = val;
+                else if (key == "MemAvailable:")
+                    memAvail = val;
+                else if (key == "SwapTotal:")
+                    swapTotal = val;
+                else if (key == "SwapFree:")
+                    swapFree = val;
             }
             m.ramTotalMb = static_cast<float>(memTotal) / 1024.0f;
-            m.ramUsedMb  = static_cast<float>(memTotal - memAvail) / 1024.0f;
+            m.ramUsedMb = static_cast<float>(memTotal - memAvail) / 1024.0f;
             m.swapUsedMb = static_cast<float>(swapTotal - swapFree) / 1024.0f;
         }
 
@@ -243,8 +480,8 @@ namespace core::deviceprocess
             double load[3] = {0, 0, 0};
             if (getloadavg(load, 3) == 3)
             {
-                m.loadAvg1m  = static_cast<float>(load[0]);
-                m.loadAvg5m  = static_cast<float>(load[1]);
+                m.loadAvg1m = static_cast<float>(load[0]);
+                m.loadAvg5m = static_cast<float>(load[1]);
                 m.loadAvg15m = static_cast<float>(load[2]);
             }
 
