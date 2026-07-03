@@ -46,6 +46,7 @@ namespace core::deviceprocess
 
         void make_threshold_rule_creator()
         {
+            thresholdRules.clear();
             /*
              * CPU usage
              * High CPU for a short time is normal.
@@ -184,14 +185,23 @@ namespace core::deviceprocess
 
         void make_device_metric_snapshot(const deviceMetrics &m)
         {
+            deviceMetricsSnapshot.samples.clear();
             deviceMetricsSnapshot.timestamp_ms = m.timestamp_ms;
 
             add_metric(deviceMetricsSnapshot, "cpu.usage", m.cpuUsage, m.timestamp_ms, anomaly_detection::metricType::Gauge);
             add_metric(deviceMetricsSnapshot, "cpu.temp", m.cpuTemp, m.timestamp_ms, anomaly_detection::metricType::Gauge);
-            add_metric(deviceMetricsSnapshot, "cpu.load_1m", m.loadAvg1m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
-            add_metric(deviceMetricsSnapshot, "cpu.load_5m", m.loadAvg5m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
-            add_metric(deviceMetricsSnapshot, "cpu.load_15m", m.loadAvg15m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
             add_metric(deviceMetricsSnapshot, "cpu.core_count", m.coreCount, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+
+            if (m.coreCount > 0)
+            {
+                double normalizedLoad1m = static_cast<double>(m.loadAvg1m) / static_cast<double>(m.coreCount);
+                double normalizedLoad5m = static_cast<double>(m.loadAvg5m) / static_cast<double>(m.coreCount);
+                double normalizedLoad15m = static_cast<double>(m.loadAvg15m) / static_cast<double>(m.coreCount);
+
+                add_metric(deviceMetricsSnapshot, "cpu.load_1m", normalizedLoad1m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+                add_metric(deviceMetricsSnapshot, "cpu.load_5m", normalizedLoad5m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+                add_metric(deviceMetricsSnapshot, "cpu.load_15m", normalizedLoad15m, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            }
 
             for (std::size_t i = 0; i < m.perCoreUsage.size(); ++i)
             {
@@ -447,6 +457,8 @@ namespace core::deviceprocess
         std::uint8_t cachedEmmcLife = read_emmc_life();
         int cycle = 0;
 
+        init_anomaly_detectors();
+
         while (1)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(kSampleIntervalMs));
@@ -522,6 +534,10 @@ namespace core::deviceprocess
                 m.uptimeSec);
 
             core::interprocess::messageProtocol_.send_device_data(m);
+
+
+            make_device_metric_snapshot(m);
+            run_anomaly_detectors();
         }
     }
 

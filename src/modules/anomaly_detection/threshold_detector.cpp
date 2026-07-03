@@ -1,9 +1,10 @@
 #include "gateway/modules/anomaly_detection/threshold_detector.hpp"
+#include "spdlog/spdlog.h"
 
 namespace anomaly_detection
 {
 
-    explicit thresholdDetector::thresholdDetector(std::vector<thresholdRule> rules)
+    thresholdDetector::thresholdDetector(std::vector<thresholdRule> rules)
         : rules_(std::move(rules))
     {
     }
@@ -17,9 +18,9 @@ namespace anomaly_detection
     {
         std::vector<anomalyEvent> events;
 
-        for (const metricSample sample : snapshot.samples)
+        for (const metricSample& sample : snapshot.samples)
         {
-            for (const thresholdRule rule : rules_)
+            for (const thresholdRule& rule : rules_)
             {
 
                 if (sample.name != rule.metricName)
@@ -33,14 +34,38 @@ namespace anomaly_detection
                 if (critical)
                 {
                     events.push_back(make_event(sample,
-                                               severity::Critical,
-                                               rule.criticalLimit,rule.message));
+                                                severity::Critical,
+                                                rule.criticalLimit, rule.warningLimit, rule.message));
+
+                    SPDLOG_INFO("Threshold alert: severity=Critical metric={} value={} limit={} trigger={} timestamp_ms={} message={}",
+                                sample.name,
+                                sample.value,
+                                rule.criticalLimit,
+                                rule.triggerAbove ? "above" : "below",
+                                sample.timestamp_ms,
+                                rule.message);
                 }
                 else if (warning)
                 {
                     events.push_back(make_event(sample,
-                                               severity::Warning,
-                                               rule.warningLimit,rule.message));
+                                                severity::Warning, rule.criticalLimit,
+                                                rule.warningLimit, rule.message));
+
+                    SPDLOG_INFO("Threshold alert: severity=warning metric={} value={} limit={} trigger={} timestamp_ms={} message={}",
+                                sample.name,
+                                sample.value,
+                                rule.warningLimit,
+                                rule.triggerAbove ? "above" : "below",
+                                sample.timestamp_ms,
+                                rule.message);
+                }
+                else
+                {
+                    events.push_back(make_event(sample,
+                                                severity::Info,
+                                                rule.criticalLimit,
+                                                rule.warningLimit, "normal"));
+
                 }
             }
         }
@@ -57,16 +82,17 @@ namespace anomaly_detection
         return value < limit;
     }
 
-    anomalyEvent thresholdDetector::make_event(const metricSample &sample, severity severity_, double limit, std::string_view message)
+    anomalyEvent thresholdDetector::make_event(const metricSample &sample, severity severity_, double criticalLimit, double warningLimit, std::string_view message)
     {
 
         return anomalyEvent{
 
             .detectorName = std::string{name()},
             .metricName = sample.name,
-            .severity = severity_,
+            .severity_ = severity_,
             .value = sample.value,
-            .limit = limit,
+            .criticalLimit = criticalLimit,
+            .warningLimit = warningLimit,
             .message = std::string{message},
             .timestamp_ms = sample.timestamp_ms
 

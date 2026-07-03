@@ -2,6 +2,10 @@
 
 add_library(module_anomaly_detection
 threshold_detector.cpp
+range_check_detector.cpp
+timeout_detector.cpp
+delta_detector.cpp
+slope_detector.cpp
 )
 
 

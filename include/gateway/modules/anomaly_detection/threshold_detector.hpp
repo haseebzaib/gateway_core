@@ -31,7 +31,7 @@ namespace anomaly_detection
     private:
 
     bool cross_limit(double value,double limit,bool triggerAbove);
-    anomalyEvent make_event(const metricSample& sample,severity severity_,double limit,std::string_view message);
+    anomalyEvent make_event(const metricSample& sample,severity severity_,double criticalLimit,double warningLimit,std::string_view message);
     std::vector<thresholdRule> rules_;
     };
 
