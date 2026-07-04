@@ -33,13 +33,13 @@ namespace anomaly_detection
                 {
                     previousSamples_[rule.metricName] = sample;
 
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningDelta,
-                                                rule.criticalDelta,
-                                                rule.triggerPositive,
-                                                "Delta warmup: first sample stored."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningDelta,
+                    //                             rule.criticalDelta,
+                    //                             rule.triggerPositive,
+                    //                             "Delta warmup: first sample stored."));
 
                     continue;
                 }
@@ -50,13 +50,13 @@ namespace anomaly_detection
                 {
                     previousSamples_[rule.metricName] = sample;
 
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningDelta,
-                                                rule.criticalDelta,
-                                                rule.triggerPositive,
-                                                "Delta reset: invalid or duplicate timestamp."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningDelta,
+                    //                             rule.criticalDelta,
+                    //                             rule.triggerPositive,
+                    //                             "Delta reset: invalid or duplicate timestamp."));
 
                     continue;
                 }
@@ -67,13 +67,13 @@ namespace anomaly_detection
                 {
                     previousSamples_[rule.metricName] = sample;
 
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningDelta,
-                                                rule.criticalDelta,
-                                                rule.triggerPositive,
-                                                "Delta reset: sample gap too large."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningDelta,
+                    //                             rule.criticalDelta,
+                    //                             rule.triggerPositive,
+                    //                             "Delta reset: sample gap too large."));
 
                     continue;
                 }
@@ -116,16 +116,16 @@ namespace anomaly_detection
                                                 rule.triggerPositive,
                                                 rule.message));
                 }
-                else
-                {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                delta,
-                                                rule.warningDelta,
-                                                rule.criticalDelta,
-                                                rule.triggerPositive,
-                                                "Delta is normal."));
-                }
+                // else
+                // {
+                //     events.push_back(make_event(sample,
+                //                                 severity::Info,
+                //                                 delta,
+                //                                 rule.warningDelta,
+                //                                 rule.criticalDelta,
+                //                                 rule.triggerPositive,
+                //                                 "Delta is normal."));
+                // }
             }
         }
 

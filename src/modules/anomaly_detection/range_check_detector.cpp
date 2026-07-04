@@ -42,12 +42,12 @@ namespace anomaly_detection
                                 sample.timestamp_ms,
                                 rule.message);
                 }
-                else
-                {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                rule.minValue, rule.maxValue, "Normal"));
-                }
+                // else
+                // {
+                //     events.push_back(make_event(sample,
+                //                                 severity::Info,
+                //                                 rule.minValue, rule.maxValue, "Normal"));
+                // }
             }
         }
 

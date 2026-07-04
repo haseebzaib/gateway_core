@@ -6,6 +6,8 @@ range_check_detector.cpp
 timeout_detector.cpp
 delta_detector.cpp
 slope_detector.cpp
+multi_condition_detector.cpp
+z_score_detector.cpp
 )
 
 

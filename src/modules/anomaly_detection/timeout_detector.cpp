@@ -41,10 +41,10 @@ namespace anomaly_detection
 
                     events.push_back(make_event(sample,rule.severity_,rule.timeoutMS,rule.message));
                 }
-                else
-                {
-                    events.push_back(make_event(sample,severity::Info,rule.timeoutMS,"Normal"));
-                }
+                // else
+                // {
+                //     events.push_back(make_event(sample,severity::Info,rule.timeoutMS,"Normal"));
+                // }
             }
         }
 

@@ -30,6 +30,9 @@ namespace anomaly_detection {
         double warningSlopePerMin;
         double criticalSlopePerMin;
         bool triggerPositive;
+        std::string alarmName;
+        double warningZ;
+        double criticalZ;
         std::uint64_t slopeWindowMs;
         std::uint64_t timeoutMs;
         std::string message;

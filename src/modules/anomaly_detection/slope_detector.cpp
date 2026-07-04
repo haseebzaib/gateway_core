@@ -80,14 +80,14 @@ namespace anomaly_detection
                  */
                 if (history.size() < rule.minSamples)
                 {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningSlopePerMin,
-                                                rule.criticalSlopePerMin,
-                                                rule.triggerPositive,
-                                                rule.windowMs,
-                                                "Slope warmup: waiting for minimum samples."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningSlopePerMin,
+                    //                             rule.criticalSlopePerMin,
+                    //                             rule.triggerPositive,
+                    //                             rule.windowMs,
+                    //                             "Slope warmup: waiting for minimum samples."));
 
                     continue;
                 }
@@ -97,14 +97,14 @@ namespace anomaly_detection
 
                 if (last.timestamp_ms <= first.timestamp_ms)
                 {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningSlopePerMin,
-                                                rule.criticalSlopePerMin,
-                                                rule.triggerPositive,
-                                                rule.windowMs,
-                                                "Slope not evaluated: invalid or duplicate timestamps."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningSlopePerMin,
+                    //                             rule.criticalSlopePerMin,
+                    //                             rule.triggerPositive,
+                    //                             rule.windowMs,
+                    //                             "Slope not evaluated: invalid or duplicate timestamps."));
 
                     continue;
                 }
@@ -117,14 +117,14 @@ namespace anomaly_detection
                  */
                 if (elapsedMs < rule.minElapsedMs)
                 {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningSlopePerMin,
-                                                rule.criticalSlopePerMin,
-                                                rule.triggerPositive,
-                                                rule.windowMs,
-                                                "Slope warmup: waiting for minimum elapsed time."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningSlopePerMin,
+                    //                             rule.criticalSlopePerMin,
+                    //                             rule.triggerPositive,
+                    //                             rule.windowMs,
+                    //                             "Slope warmup: waiting for minimum elapsed time."));
 
                     continue;
                 }
@@ -133,14 +133,14 @@ namespace anomaly_detection
 
                 if (elapsedMin <= 0.0)
                 {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                0.0,
-                                                rule.warningSlopePerMin,
-                                                rule.criticalSlopePerMin,
-                                                rule.triggerPositive,
-                                                rule.windowMs,
-                                                "Slope not evaluated: elapsed time is zero."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             0.0,
+                    //                             rule.warningSlopePerMin,
+                    //                             rule.criticalSlopePerMin,
+                    //                             rule.triggerPositive,
+                    //                             rule.windowMs,
+                    //                             "Slope not evaluated: elapsed time is zero."));
 
                     continue;
                 }
@@ -185,14 +185,14 @@ namespace anomaly_detection
                 }
                 else
                 {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                slopePerMin,
-                                                rule.warningSlopePerMin,
-                                                rule.criticalSlopePerMin,
-                                                rule.triggerPositive,
-                                                rule.windowMs,
-                                                "Slope is normal."));
+                    // events.push_back(make_event(sample,
+                    //                             severity::Info,
+                    //                             slopePerMin,
+                    //                             rule.warningSlopePerMin,
+                    //                             rule.criticalSlopePerMin,
+                    //                             rule.triggerPositive,
+                    //                             rule.windowMs,
+                    //                             "Slope is normal."));
                 }
             }
         }

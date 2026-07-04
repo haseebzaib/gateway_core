@@ -59,14 +59,14 @@ namespace anomaly_detection
                                 sample.timestamp_ms,
                                 rule.message);
                 }
-                else
-                {
-                    events.push_back(make_event(sample,
-                                                severity::Info,
-                                                rule.criticalLimit,
-                                                rule.warningLimit, "normal"));
+                // else
+                // {
+                //     events.push_back(make_event(sample,
+                //                                 severity::Info,
+                //                                 rule.criticalLimit,
+                //                                 rule.warningLimit, "normal"));
 
-                }
+                // }
             }
         }
 
