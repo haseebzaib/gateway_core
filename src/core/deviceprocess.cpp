@@ -34,7 +34,7 @@ namespace core::deviceprocess
     {
         using deviceMetrics = module::message_protocol::messageProtocol::deviceMetrics;
 
-        constexpr int kSampleIntervalMs = 300; // how often we sample + send
+        constexpr int kSampleIntervalMs = 1000; // how often we sample + send
         constexpr int kEmmcLifeEveryN = 2500;   // refresh slow eMMC-life read every N cycles
 
         std::vector<anomaly_detection::thresholdRule> thresholdRules;
