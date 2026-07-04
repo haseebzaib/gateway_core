@@ -585,6 +585,8 @@ namespace core::deviceprocess
 
         void run_anomaly_detectors()
         {
+            std::vector<anomaly_detection::anomalyEvent> allAnomalyEvents;
+
             for (const std::unique_ptr<anomaly_detection::baseDetector> &anomalyDetector : anomalyDetectors)
             {
                 std::vector<anomaly_detection::anomalyEvent> anomalyEvents = anomalyDetector->update(deviceMetricsSnapshot);
@@ -599,7 +601,14 @@ namespace core::deviceprocess
                         event.value,
                         event.timestamp_ms,
                         event.message);
+
+                    allAnomalyEvents.push_back(event);
                 }
+            }
+
+            if (!allAnomalyEvents.empty())
+            {
+                core::interprocess::messageProtocol_.send_device_anomaly_data(allAnomalyEvents);
             }
         }
 

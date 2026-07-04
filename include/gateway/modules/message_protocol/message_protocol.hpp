@@ -16,6 +16,7 @@
 #include <optional>
 #include <vector>
 #include <cstdint>
+#include "gateway/modules/anomaly_detection/event.hpp"
 #include "gateway/utils/thirdparty/json.hpp"
 
 /**
@@ -102,7 +103,7 @@ namespace module::message_protocol
     ~messageProtocol();
 
     void send_device_data(deviceMetrics deviceData);
-    void send_device_anamoly();
+    void send_device_anomaly_data(const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents);
 
     std::optional<std::vector<std::uint8_t>> get_next_tx();
 
