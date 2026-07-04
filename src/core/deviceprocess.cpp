@@ -2,7 +2,13 @@
 #include "gateway/core/interprocess.hpp"
 #include "gateway/modules/message_protocol/message_protocol.hpp"
 #include "gateway/modules/anomaly_detection/detector.hpp"
+#include "gateway/modules/anomaly_detection/delta_detector.hpp"
+#include "gateway/modules/anomaly_detection/multi_condition_detector.hpp"
+#include "gateway/modules/anomaly_detection/range_check_detector.hpp"
+#include "gateway/modules/anomaly_detection/slope_detector.hpp"
 #include "gateway/modules/anomaly_detection/threshold_detector.hpp"
+#include "gateway/modules/anomaly_detection/timeout_detector.hpp"
+#include "gateway/modules/anomaly_detection/z_score_detector.hpp"
 
 #include "thread"
 #include "chrono"
@@ -12,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdint>
 #include <cstdio>
@@ -27,12 +34,33 @@ namespace core::deviceprocess
     {
         using deviceMetrics = module::message_protocol::messageProtocol::deviceMetrics;
 
-        constexpr int kSampleIntervalMs = 1000; // how often we sample + send
+        constexpr int kSampleIntervalMs = 300; // how often we sample + send
         constexpr int kEmmcLifeEveryN = 2500;   // refresh slow eMMC-life read every N cycles
 
         std::vector<anomaly_detection::thresholdRule> thresholdRules;
+        std::vector<anomaly_detection::rangeRule> rangeRules;
+        std::vector<anomaly_detection::deltaRule> deltaRules;
+        std::vector<anomaly_detection::slopeRule> slopeRules;
+        std::vector<anomaly_detection::zScoreRule> zScoreRules;
+        std::vector<anomaly_detection::timeoutRule> timeoutRules;
+        std::vector<anomaly_detection::multiConditionRule> multiConditionRules;
         std::vector<std::unique_ptr<anomaly_detection::baseDetector>> anomalyDetectors;
         anomaly_detection::metricSnapshot deviceMetricsSnapshot;
+
+        std::string_view severity_text(anomaly_detection::severity severity)
+        {
+            switch (severity)
+            {
+            case anomaly_detection::severity::Info:
+                return "Info";
+            case anomaly_detection::severity::Warning:
+                return "Warning";
+            case anomaly_detection::severity::Critical:
+                return "Critical";
+            }
+
+            return "Unknown";
+        }
 
         void threshold_rule_creator(std::string_view metricName, double warningLimit, double criticalLimit, bool triggerAbove, std::string_view message)
         {
@@ -41,6 +69,100 @@ namespace core::deviceprocess
                 .warningLimit = warningLimit,
                 .criticalLimit = criticalLimit,
                 .triggerAbove = triggerAbove,
+                .message = std::string{message}});
+        }
+
+        void range_rule_creator(std::string_view metricName,
+                                double minValue,
+                                double maxValue,
+                                anomaly_detection::severity severity,
+                                std::string_view message)
+        {
+            rangeRules.push_back(anomaly_detection::rangeRule{
+                .metricName = std::string{metricName},
+                .minValue = minValue,
+                .maxValue = maxValue,
+                .severity_ = severity,
+                .message = std::string{message}});
+        }
+
+        void delta_rule_creator(std::string_view metricName,
+                                double warningDelta,
+                                double criticalDelta,
+                                bool triggerPositive,
+                                std::uint64_t maxSampleGapMs,
+                                std::string_view message)
+        {
+            deltaRules.push_back(anomaly_detection::deltaRule{
+                .metricName = std::string{metricName},
+                .warningDelta = warningDelta,
+                .criticalDelta = criticalDelta,
+                .triggerPositive = triggerPositive,
+                .maxSampleGapMs = maxSampleGapMs,
+                .message = std::string{message}});
+        }
+
+        void slope_rule_creator(std::string_view metricName,
+                                double warningSlopePerMin,
+                                double criticalSlopePerMin,
+                                std::uint64_t minElapsedMs,
+                                std::size_t minSamples,
+                                bool triggerPositive,
+                                std::uint64_t windowMs,
+                                std::uint64_t maxSampleGapMs,
+                                std::string_view message)
+        {
+            slopeRules.push_back(anomaly_detection::slopeRule{
+                .metricName = std::string{metricName},
+                .warningSlopePerMin = warningSlopePerMin,
+                .criticalSlopePerMin = criticalSlopePerMin,
+                .minElapsedMs = minElapsedMs,
+                .minSamples = minSamples,
+                .triggerPositive = triggerPositive,
+                .windowMs = windowMs,
+                .maxSampleGapMs = maxSampleGapMs,
+                .message = std::string{message}});
+        }
+
+        void z_score_rule_creator(std::string_view metricName,
+                                  double warningZ,
+                                  double criticalZ,
+                                  std::size_t warmupSamples,
+                                  double minStdDev,
+                                  std::string_view message)
+        {
+            zScoreRules.push_back(anomaly_detection::zScoreRule{
+                .metricName = std::string{metricName},
+                .warningZ = warningZ,
+                .criticalZ = criticalZ,
+                .warmupSamples = warmupSamples,
+                .minStdDev = minStdDev,
+                .message = std::string{message}});
+        }
+
+        void timeout_rule_creator(std::string_view metricName,
+                                  std::uint64_t timeoutMs,
+                                  anomaly_detection::severity severity,
+                                  std::string_view message)
+        {
+            timeoutRules.push_back(anomaly_detection::timeoutRule{
+                .metricName = std::string{metricName},
+                .timeoutMs = timeoutMs,
+                .severity_ = severity,
+                .message = std::string{message}});
+        }
+
+        void multi_condition_rule_creator(std::string_view alarmName,
+                                          std::vector<anomaly_detection::condition> conditions,
+                                          anomaly_detection::logicOp logic,
+                                          anomaly_detection::severity severity,
+                                          std::string_view message)
+        {
+            multiConditionRules.push_back(anomaly_detection::multiConditionRule{
+                .alarmName = std::string{alarmName},
+                .conditions = std::move(conditions),
+                .logic = logic,
+                .severity_ = severity,
                 .message = std::string{message}});
         }
 
@@ -72,30 +194,29 @@ namespace core::deviceprocess
                 "CPU temperature is high. Check enclosure airflow, heatsink contact, ambient temperature, and CPU load.");
 
             /*
-             * Load average normalized would be better.
-             * If using raw load average on 4-core device:
-             * warning 4 means fully loaded, critical 6 means overloaded.
+             * Load average is normalized by online core count in the snapshot.
+             * 1.0 means the CPU set is fully loaded; >1.0 means runnable work is queuing.
              */
             threshold_rule_creator(
                 "cpu.load_1m",
-                4.0,
-                6.0,
+                0.9,
+                1.5,
                 true,
-                "1-minute system load is high. Device may be overloaded; check CPU-heavy tasks or blocked processes.");
+                "1-minute normalized system load is high. Device may be overloaded; check CPU-heavy tasks or blocked processes.");
 
             threshold_rule_creator(
                 "cpu.load_5m",
-                4.0,
-                6.0,
+                0.9,
+                1.5,
                 true,
-                "5-minute system load is high. Load is sustained; check long-running CPU or I/O bound tasks.");
+                "5-minute normalized system load is high. Load is sustained; check long-running CPU or I/O bound tasks.");
 
             threshold_rule_creator(
                 "cpu.load_15m",
-                4.0,
-                6.0,
+                0.9,
+                1.5,
                 true,
-                "15-minute system load is high. Device has been overloaded for a long time; investigate services and logs.");
+                "15-minute normalized system load is high. Device has been overloaded for a long time; investigate services and logs.");
 
             /*
              * Raspberry Pi throttling flags.
@@ -142,6 +263,13 @@ namespace core::deviceprocess
                 true,
                 "Disk usage is high. Clean old logs, rotate logs, remove temporary files, or increase storage.");
 
+            threshold_rule_creator(
+                "storage.emmc_used_pct",
+                80.0,
+                90.0,
+                true,
+                "eMMC/SD usage is high across mounted device partitions. Clean retained files or increase storage.");
+
             /*
              * eMMC life used.
              * This is wear indicator. It does not usually recover.
@@ -165,6 +293,173 @@ namespace core::deviceprocess
                 60.0,
                 false,
                 "System uptime is very low. Device may have recently rebooted; check crash logs, watchdog, power loss, or kernel panic.");
+        }
+
+        void make_range_rule_creator()
+        {
+            rangeRules.clear();
+
+            range_rule_creator("cpu.usage", 0.0, 100.0, anomaly_detection::severity::Critical,
+                               "CPU usage reading is outside the valid 0-100% range. Check metric collection.");
+            range_rule_creator("cpu.temp", -40.0, 95.0, anomaly_detection::severity::Critical,
+                               "CPU temperature reading is outside expected device range. Check thermal sensor or board health.");
+            range_rule_creator("cpu.core_count", 1.0, 64.0, anomaly_detection::severity::Critical,
+                               "Online CPU core count is invalid. Check /proc/stat parsing or CPU hotplug state.");
+            range_rule_creator("cpu.load_1m", 0.0, 32.0, anomaly_detection::severity::Warning,
+                               "1-minute normalized load reading is outside expected range. Check load average collection.");
+            range_rule_creator("cpu.load_5m", 0.0, 32.0, anomaly_detection::severity::Warning,
+                               "5-minute normalized load reading is outside expected range. Check load average collection.");
+            range_rule_creator("cpu.load_15m", 0.0, 32.0, anomaly_detection::severity::Warning,
+                               "15-minute normalized load reading is outside expected range. Check load average collection.");
+            range_rule_creator("cpu.throttle_flags", 0.0, 15.0, anomaly_detection::severity::Critical,
+                               "CPU throttle flags are outside the valid Raspberry Pi live flag bit range.");
+            range_rule_creator("memory.ram_used_mb", 0.0, 1048576.0, anomaly_detection::severity::Critical,
+                               "RAM used reading is invalid. Check /proc/meminfo parsing.");
+            range_rule_creator("memory.ram_total_mb", 1.0, 1048576.0, anomaly_detection::severity::Critical,
+                               "RAM total reading is invalid. Check /proc/meminfo parsing.");
+            range_rule_creator("memory.ram_used_pct", 0.0, 100.0, anomaly_detection::severity::Critical,
+                               "RAM usage percent is outside the valid 0-100% range.");
+            range_rule_creator("memory.swap_used_mb", 0.0, 1048576.0, anomaly_detection::severity::Critical,
+                               "Swap usage reading is invalid. Check /proc/meminfo parsing.");
+            range_rule_creator("storage.disk_used_pct", 0.0, 100.0, anomaly_detection::severity::Critical,
+                               "Root disk usage percent is outside the valid 0-100% range.");
+            range_rule_creator("storage.emmc_used_mb", 0.0, 104857600.0, anomaly_detection::severity::Critical,
+                               "eMMC/SD used-space reading is invalid. Check mount parsing.");
+            range_rule_creator("storage.emmc_total_mb", 0.0, 104857600.0, anomaly_detection::severity::Warning,
+                               "eMMC/SD total-space reading is outside expected range. Device may not expose mmcblk0.");
+            range_rule_creator("storage.emmc_used_pct", 0.0, 100.0, anomaly_detection::severity::Critical,
+                               "eMMC/SD usage percent is outside the valid 0-100% range.");
+            range_rule_creator("storage.emmc_life_used_pct", 0.0, 100.0, anomaly_detection::severity::Critical,
+                               "eMMC life reading is outside the valid 0-100% range.");
+            range_rule_creator("system.uptime_sec", 0.0, 315360000.0, anomaly_detection::severity::Critical,
+                               "System uptime reading is invalid. Check /proc/uptime parsing.");
+        }
+
+        void make_delta_rule_creator()
+        {
+            deltaRules.clear();
+
+            delta_rule_creator("cpu.usage", 50.0, 75.0, true, 5000,
+                               "CPU usage jumped sharply between samples. Check for sudden workload spikes.");
+            delta_rule_creator("cpu.temp", 8.0, 15.0, true, 5000,
+                               "CPU temperature jumped sharply. Check fan/heatsink contact, enclosure airflow, or sudden CPU load.");
+            delta_rule_creator("memory.ram_used_pct", 15.0, 25.0, true, 5000,
+                               "RAM usage jumped sharply. Check for burst allocation or a memory leak.");
+            delta_rule_creator("memory.swap_used_mb", 64.0, 256.0, true, 5000,
+                               "Swap usage jumped sharply. Device may be entering memory pressure.");
+            delta_rule_creator("storage.disk_used_pct", 2.0, 5.0, true, 5000,
+                               "Root disk usage increased sharply. Check logs, captures, or temporary files.");
+            delta_rule_creator("storage.emmc_used_pct", 2.0, 5.0, true, 5000,
+                               "eMMC/SD usage increased sharply. Check retained data, logs, or buffers.");
+        }
+
+        void make_slope_rule_creator()
+        {
+            slopeRules.clear();
+
+            slope_rule_creator("cpu.temp", 10.0, 20.0, 10000, 5, true, 60000, 5000,
+                               "CPU temperature is rising quickly over the current window.");
+            slope_rule_creator("memory.ram_used_pct", 10.0, 20.0, 10000, 5, true, 60000, 5000,
+                               "RAM usage is rising quickly. Possible memory leak or runaway workload.");
+            slope_rule_creator("memory.swap_used_mb", 128.0, 512.0, 10000, 5, true, 60000, 5000,
+                               "Swap usage is rising quickly. Device may be under sustained memory pressure.");
+            slope_rule_creator("storage.disk_used_pct", 1.0, 3.0, 10000, 5, true, 120000, 5000,
+                               "Root disk usage is increasing quickly. Check logs, captures, or buffering.");
+            slope_rule_creator("storage.emmc_used_pct", 1.0, 3.0, 10000, 5, true, 120000, 5000,
+                               "eMMC/SD usage is increasing quickly. Check retained data, logs, or buffering.");
+        }
+
+        void make_z_score_rule_creator()
+        {
+            zScoreRules.clear();
+
+            z_score_rule_creator("cpu.usage", 3.0, 5.0, 30, 2.0,
+                                 "CPU usage is unusual compared with the learned device baseline.");
+            z_score_rule_creator("cpu.temp", 3.0, 5.0, 30, 1.0,
+                                 "CPU temperature is unusual compared with the learned device baseline.");
+            z_score_rule_creator("cpu.load_1m", 3.0, 5.0, 30, 0.05,
+                                 "1-minute normalized load is unusual compared with the learned device baseline.");
+            z_score_rule_creator("memory.ram_used_pct", 3.0, 5.0, 30, 1.0,
+                                 "RAM usage is unusual compared with the learned device baseline.");
+            z_score_rule_creator("storage.disk_used_pct", 3.0, 5.0, 30, 0.1,
+                                 "Root disk usage is unusual compared with the learned device baseline.");
+            z_score_rule_creator("storage.emmc_used_pct", 3.0, 5.0, 30, 0.1,
+                                 "eMMC/SD usage is unusual compared with the learned device baseline.");
+        }
+
+        void make_timeout_rule_creator()
+        {
+            timeoutRules.clear();
+
+            timeout_rule_creator("cpu.usage", 5000, anomaly_detection::severity::Critical,
+                                 "CPU usage metric has not been observed recently.");
+            timeout_rule_creator("cpu.temp", 5000, anomaly_detection::severity::Critical,
+                                 "CPU temperature metric has not been observed recently.");
+            timeout_rule_creator("cpu.load_1m", 5000, anomaly_detection::severity::Warning,
+                                 "1-minute normalized load metric has not been observed recently.");
+            timeout_rule_creator("memory.ram_used_pct", 5000, anomaly_detection::severity::Critical,
+                                 "RAM usage percent metric has not been observed recently.");
+            timeout_rule_creator("storage.disk_used_pct", 5000, anomaly_detection::severity::Critical,
+                                 "Root disk usage metric has not been observed recently.");
+            timeout_rule_creator("storage.emmc_used_pct", 5000, anomaly_detection::severity::Warning,
+                                 "eMMC/SD usage percent metric has not been observed recently.");
+            timeout_rule_creator("system.uptime_sec", 5000, anomaly_detection::severity::Critical,
+                                 "System uptime metric has not been observed recently.");
+        }
+
+        void make_multi_condition_rule_creator()
+        {
+            using anomaly_detection::compareOp;
+            using anomaly_detection::condition;
+            using anomaly_detection::logicOp;
+            using anomaly_detection::severity;
+
+            multiConditionRules.clear();
+
+            multi_condition_rule_creator(
+                "device_thermal_stress",
+                std::vector<condition>{
+                    {.metricName = "cpu.usage", .op = compareOp::GreaterThan, .value = 85.0},
+                    {.metricName = "cpu.temp", .op = compareOp::GreaterThan, .value = 75.0}},
+                logicOp::All,
+                severity::Warning,
+                "CPU usage and temperature are both high. Device may be thermally stressed.");
+
+            multi_condition_rule_creator(
+                "device_throttling_thermal",
+                std::vector<condition>{
+                    {.metricName = "cpu.throttle_flags", .op = compareOp::GreaterThan, .value = 0.0},
+                    {.metricName = "cpu.temp", .op = compareOp::GreaterThan, .value = 70.0}},
+                logicOp::All,
+                severity::Critical,
+                "CPU throttling flags are active while temperature is high. Check cooling and power supply.");
+
+            multi_condition_rule_creator(
+                "device_memory_pressure",
+                std::vector<condition>{
+                    {.metricName = "memory.ram_used_pct", .op = compareOp::GreaterThan, .value = 85.0},
+                    {.metricName = "memory.swap_used_mb", .op = compareOp::GreaterThan, .value = 128.0}},
+                logicOp::All,
+                severity::Critical,
+                "RAM usage and swap usage are both high. Device is under memory pressure.");
+
+            multi_condition_rule_creator(
+                "device_storage_risk",
+                std::vector<condition>{
+                    {.metricName = "storage.disk_used_pct", .op = compareOp::GreaterThan, .value = 85.0},
+                    {.metricName = "storage.emmc_life_used_pct", .op = compareOp::GreaterThan, .value = 70.0}},
+                logicOp::All,
+                severity::Warning,
+                "Root storage is filling while eMMC life usage is high. Reduce writes and clean retained data.");
+
+            multi_condition_rule_creator(
+                "device_boot_under_load",
+                std::vector<condition>{
+                    {.metricName = "system.uptime_sec", .op = compareOp::LessThan, .value = 300.0},
+                    {.metricName = "cpu.load_1m", .op = compareOp::GreaterThan, .value = 0.9}},
+                logicOp::All,
+                severity::Warning,
+                "Device recently booted and is already under high load. Check startup services and crash loop risk.");
         }
 
         void add_metric(anomaly_detection::metricSnapshot &snapshot,
@@ -246,6 +541,16 @@ namespace core::deviceprocess
             add_metric(deviceMetricsSnapshot, "storage.disk_used_pct", m.diskUsedPct, m.timestamp_ms, anomaly_detection::metricType::Gauge);
             add_metric(deviceMetricsSnapshot, "storage.emmc_used_mb", m.emmcUsedMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
             add_metric(deviceMetricsSnapshot, "storage.emmc_total_mb", m.emmcTotalMb, m.timestamp_ms, anomaly_detection::metricType::Gauge);
+            if (m.emmcTotalMb > 0.0f)
+            {
+                double emmcUsedPercent = static_cast<double>(m.emmcUsedMb / m.emmcTotalMb) * 100.0;
+
+                add_metric(deviceMetricsSnapshot,
+                           "storage.emmc_used_pct",
+                           emmcUsedPercent,
+                           m.timestamp_ms,
+                           anomaly_detection::metricType::Gauge);
+            }
             add_metric(deviceMetricsSnapshot, "storage.emmc_life_used_pct", m.emmcLifeUsed, m.timestamp_ms, anomaly_detection::metricType::Gauge);
 
             add_metric(deviceMetricsSnapshot,
@@ -257,8 +562,25 @@ namespace core::deviceprocess
 
         void init_anomaly_detectors()
         {
+            anomalyDetectors.clear();
+
             make_threshold_rule_creator();
+            make_range_rule_creator();
+            make_delta_rule_creator();
+            make_slope_rule_creator();
+            make_z_score_rule_creator();
+            make_timeout_rule_creator();
+            make_multi_condition_rule_creator();
+
             anomalyDetectors.push_back(std::make_unique<anomaly_detection::thresholdDetector>(thresholdRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::rangeCheckDetector>(rangeRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::deltaDetection>(deltaRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::slopeDetection>(slopeRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::zScoreDetection>(zScoreRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::timeoutDetector>(timeoutRules));
+            anomalyDetectors.push_back(std::make_unique<anomaly_detection::multiConditionDetector>(multiConditionRules));
+
+            SPDLOG_INFO("Initialized {} device anomaly detectors", anomalyDetectors.size());
         }
 
         void run_anomaly_detectors()
@@ -266,6 +588,18 @@ namespace core::deviceprocess
             for (const std::unique_ptr<anomaly_detection::baseDetector> &anomalyDetector : anomalyDetectors)
             {
                 std::vector<anomaly_detection::anomalyEvent> anomalyEvents = anomalyDetector->update(deviceMetricsSnapshot);
+
+                for (const anomaly_detection::anomalyEvent &event : anomalyEvents)
+                {
+                    SPDLOG_WARN(
+                        "Device anomaly event detector={} severity={} metric={} value={} timestamp_ms={} message={}",
+                        event.detectorName,
+                        severity_text(event.severity_),
+                        event.metricName,
+                        event.value,
+                        event.timestamp_ms,
+                        event.message);
+                }
             }
         }
 
