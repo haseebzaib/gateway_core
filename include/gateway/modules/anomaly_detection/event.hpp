@@ -20,7 +20,13 @@ namespace anomaly_detection {
         std::string detectorName;
         std::string metricName;
         severity severity_;
-        double value;
+        double value; // always the raw metric reading (sample.value)
+        // Actual measured derived quantities, kept separate from the
+        // warning/critical *thresholds* below. Only set by the matching
+        // detector; left 0 otherwise. Never overload `value` with these.
+        double zScore;     // z-score detector: std-devs from the learned mean
+        double deltaValue; // delta detector: change vs the previous sample
+        double slopeValue; // slope detector: rate of change per minute
         double criticalLimit;
         double warningLimit;
         double minValue;
