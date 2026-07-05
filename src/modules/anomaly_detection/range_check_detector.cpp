@@ -34,13 +34,13 @@ namespace anomaly_detection
                                                 rule.severity_,
                                                 rule.minValue, rule.maxValue, rule.message));
 
-                    SPDLOG_INFO("RangeDetector alert: severity={} metric={} value={} minValue={} maxValue={} timestamp_ms={} message={}",
-                                sample.name,
-                                sample.value,
-                                rule.minValue,
-                                rule.maxValue,
-                                sample.timestamp_ms,
-                                rule.message);
+                    // SPDLOG_INFO("RangeDetector alert: severity={} metric={} value={} minValue={} maxValue={} timestamp_ms={} message={}",
+                    //             sample.name,
+                    //             sample.value,
+                    //             rule.minValue,
+                    //             rule.maxValue,
+                    //             sample.timestamp_ms,
+                    //             rule.message);
                 }
                 // else
                 // {
