@@ -37,6 +37,15 @@ namespace anomaly_detection
          */
         double minStdDev;
 
+        /*
+         * Minimum ABSOLUTE deviation from the baseline (in the metric's own
+         * units) required before firing. z-score is relative, so a metric that
+         * idles low with tiny variation (e.g. CPU at 1-10%) looks "unusual" on
+         * any small wobble. Requiring a real absolute gap ignores that noise
+         * while still catching genuine excursions.
+         */
+        double minAbsDelta;
+
         std::string message;
     };
 

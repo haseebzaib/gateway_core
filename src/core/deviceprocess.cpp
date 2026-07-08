@@ -129,6 +129,7 @@ namespace core::deviceprocess
                                   double criticalZ,
                                   std::size_t warmupSamples,
                                   double minStdDev,
+                                  double minAbsDelta,
                                   std::string_view message)
         {
             zScoreRules.push_back(anomaly_detection::zScoreRule{
@@ -137,6 +138,7 @@ namespace core::deviceprocess
                 .criticalZ = criticalZ,
                 .warmupSamples = warmupSamples,
                 .minStdDev = minStdDev,
+                .minAbsDelta = minAbsDelta,
                 .message = std::string{message}});
         }
 
@@ -373,21 +375,25 @@ namespace core::deviceprocess
         {
             zScoreRules.clear();
 
-            z_score_rule_creator("cpu.usage", 3.0, 5.0, 30, 2.0,
+            // Args: warningZ, criticalZ, warmupSamples, minStdDev, minAbsDelta, message.
+            // minAbsDelta is in the metric's own units (%, °C, load) and is the
+            // real gap from baseline needed before a z-score can fire, so idle
+            // noise (e.g. CPU wobbling 1-10%) is ignored.
+            z_score_rule_creator("cpu.usage", 3.0, 5.0, 30, 2.0, 20.0,
                                  "CPU usage is unusual compared with the learned device baseline.");
-            z_score_rule_creator("cpu.temp", 3.0, 5.0, 30, 1.0,
+            z_score_rule_creator("cpu.temp", 3.0, 5.0, 30, 1.0, 8.0,
                                  "CPU temperature is unusual compared with the learned device baseline.");
-            z_score_rule_creator("cpu.load_1m", 3.0, 5.0, 30, 0.05,
+            z_score_rule_creator("cpu.load_1m", 3.0, 5.0, 30, 0.05, 0.3,
                                  "1-minute normalized load is unusual compared with the learned device baseline.");
-            z_score_rule_creator("memory.ram_used_pct", 3.0, 5.0, 30, 1.0,
+            z_score_rule_creator("memory.ram_used_pct", 3.0, 5.0, 30, 1.0, 10.0,
                                  "RAM usage is unusual compared with the learned device baseline.");
             // Storage fills slowly and monotonically; it has no meaningful
             // "normal variation" to be unusual against, so require a full 1% of
             // real movement before z-score even considers it (otherwise tiny
             // quantized steps on an essentially flat line read as huge z-scores).
-            z_score_rule_creator("storage.disk_used_pct", 3.0, 5.0, 30, 1.0,
+            z_score_rule_creator("storage.disk_used_pct", 3.0, 5.0, 30, 1.0, 5.0,
                                  "Root disk usage is unusual compared with the learned device baseline.");
-            z_score_rule_creator("storage.emmc_used_pct", 3.0, 5.0, 30, 1.0,
+            z_score_rule_creator("storage.emmc_used_pct", 3.0, 5.0, 30, 1.0, 5.0,
                                  "eMMC/SD usage is unusual compared with the learned device baseline.");
         }
 

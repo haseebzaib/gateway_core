@@ -82,8 +82,14 @@ namespace anomaly_detection
                 const double zScore = (sample.value - mean) / currentStdDev;
                 const double absZScore = std::fabs(zScore);
 
-                const bool critical = absZScore >= rule.criticalZ;
-                const bool warning = absZScore >= rule.warningZ;
+                // Also require a real absolute gap from the baseline, so tiny
+                // wobbles around a low idle value can't look "unusual" just
+                // because the baseline variation is small.
+                const double absDelta = std::fabs(sample.value - mean);
+                const bool farEnough = absDelta >= rule.minAbsDelta;
+
+                const bool critical = farEnough && absZScore >= rule.criticalZ;
+                const bool warning = farEnough && absZScore >= rule.warningZ;
 
                 if (critical)
                 {
