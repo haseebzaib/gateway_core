@@ -381,9 +381,13 @@ namespace core::deviceprocess
                                  "1-minute normalized load is unusual compared with the learned device baseline.");
             z_score_rule_creator("memory.ram_used_pct", 3.0, 5.0, 30, 1.0,
                                  "RAM usage is unusual compared with the learned device baseline.");
-            z_score_rule_creator("storage.disk_used_pct", 3.0, 5.0, 30, 0.1,
+            // Storage fills slowly and monotonically; it has no meaningful
+            // "normal variation" to be unusual against, so require a full 1% of
+            // real movement before z-score even considers it (otherwise tiny
+            // quantized steps on an essentially flat line read as huge z-scores).
+            z_score_rule_creator("storage.disk_used_pct", 3.0, 5.0, 30, 1.0,
                                  "Root disk usage is unusual compared with the learned device baseline.");
-            z_score_rule_creator("storage.emmc_used_pct", 3.0, 5.0, 30, 0.1,
+            z_score_rule_creator("storage.emmc_used_pct", 3.0, 5.0, 30, 1.0,
                                  "eMMC/SD usage is unusual compared with the learned device baseline.");
         }
 

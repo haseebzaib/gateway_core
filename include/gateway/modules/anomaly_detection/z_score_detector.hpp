@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <deque>
 #include <unordered_map>
 #include <string_view>
 
@@ -49,16 +50,14 @@ namespace anomaly_detection
         std::vector<anomalyEvent> update(const metricSnapshot& snapshot) override;
 
     private:
+        // Rolling window of recent values (the last `warmupSamples`), so the
+        // baseline forgets old data. A step change is thus forgotten after
+        // ~one window instead of firing forever, and a flat line has ~zero
+        // std-dev so it can never look "unusual".
         struct runningStats
         {
-            std::size_t count = 0;
-            double mean = 0.0;
-            double m2 = 0.0;
+            std::deque<double> window;
         };
-
-        void update_stats(runningStats& stats, double value);
-
-        double stddev(const runningStats& stats) const;
 
         anomalyEvent make_event(const metricSample& sample,
                                 severity severity_,

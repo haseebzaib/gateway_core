@@ -37,7 +37,7 @@ namespace anomaly_detection
                     // SPDLOG_INFO("RangeDetector alert: severity={} metric={} value={} minValue={} maxValue={} timestamp_ms={} message={}",
                     //             sample.name,
                     //             sample.value,
-                    //             rule.minValue,
+                    //             rule.minValue,c
                     //             rule.maxValue,
                     //             sample.timestamp_ms,
                     //             rule.message);

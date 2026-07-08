@@ -129,23 +129,30 @@ namespace anomaly_detection
                     continue;
                 }
 
-                double elapsedMin = static_cast<double>(elapsedMs) / 60000.0;
-
-                if (elapsedMin <= 0.0)
+                // Least-squares regression slope over every sample in the
+                // window, in value-per-minute. The old endpoint-only slope
+                // (last - first) amplified tiny noise between two samples into a
+                // steep per-minute rate, so a flat but jittery line looked like
+                // it was "rising quickly". Fitting all points ignores that jitter.
+                const double sampleCount = static_cast<double>(history.size());
+                double sumT = 0.0, sumV = 0.0, sumTT = 0.0, sumTV = 0.0;
+                for (const metricSample &point : history)
                 {
-                    // events.push_back(make_event(sample,
-                    //                             severity::Info,
-                    //                             0.0,
-                    //                             rule.warningSlopePerMin,
-                    //                             rule.criticalSlopePerMin,
-                    //                             rule.triggerPositive,
-                    //                             rule.windowMs,
-                    //                             "Slope not evaluated: elapsed time is zero."));
+                    const double t = static_cast<double>(point.timestamp_ms - first.timestamp_ms);
+                    sumT += t;
+                    sumV += point.value;
+                    sumTT += t * t;
+                    sumTV += t * point.value;
+                }
 
+                const double denom = (sampleCount * sumTT) - (sumT * sumT);
+                if (denom == 0.0)
+                {
                     continue;
                 }
 
-                double slopePerMin = (last.value - first.value) / elapsedMin;
+                const double slopePerMs = ((sampleCount * sumTV) - (sumT * sumV)) / denom;
+                const double slopePerMin = slopePerMs * 60000.0;
 
                 bool critical = false;
                 bool warning = false;

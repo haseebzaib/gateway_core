@@ -28,44 +28,62 @@ namespace anomaly_detection
                     continue;
                 }
 
-                runningStats& stats = stats_[rule.metricName];
+                std::deque<double>& window = stats_[rule.metricName].window;
+
+                // Advances the rolling window with the current value; called on
+                // every path so the baseline always keeps up with the metric.
+                const auto advance = [&]()
+                {
+                    window.push_back(sample.value);
+                    while (window.size() > rule.warmupSamples)
+                    {
+                        window.pop_front();
+                    }
+                };
 
                 /*
                  * Warmup:
-                 * First samples are only used to build baseline.
-                 * No Info event, no Warning, no Critical.
+                 * Build a full baseline window before evaluating anything.
                  */
-                if (stats.count < rule.warmupSamples)
+                if (window.size() < rule.warmupSamples)
                 {
-                    update_stats(stats, sample.value);
+                    window.push_back(sample.value);
                     continue;
                 }
 
-                double currentStdDev = stddev(stats);
+                // Baseline mean + std-dev over the recent window (excludes the
+                // current sample, so an abnormal value can't hide itself).
+                double sum = 0.0;
+                for (double value : window)
+                {
+                    sum += value;
+                }
+                const double mean = sum / static_cast<double>(window.size());
+
+                double sqSum = 0.0;
+                for (double value : window)
+                {
+                    const double d = value - mean;
+                    sqSum += d * d;
+                }
+                const double variance = sqSum / static_cast<double>(window.size() - 1);
+                const double currentStdDev = (variance > 0.0) ? std::sqrt(variance) : 0.0;
 
                 /*
-                 * If stddev is too small, z-score is not reliable.
-                 * Still update baseline, but do not generate alarm.
+                 * If stddev is too small the metric is essentially flat, so a
+                 * z-score is meaningless (a tiny quantized step would explode).
                  */
                 if (currentStdDev < rule.minStdDev)
                 {
-                    update_stats(stats, sample.value);
+                    advance();
                     continue;
                 }
 
-                /*
-                 * Calculate z-score using old stats first.
-                 * Then update stats after evaluation.
-                 *
-                 * This is important:
-                 * current abnormal value should not hide itself by updating mean first.
-                 */
-                double zScore = (sample.value - stats.mean) / currentStdDev;
+                const double zScore = (sample.value - mean) / currentStdDev;
+                const double absZScore = std::fabs(zScore);
 
-                double absZScore = std::fabs(zScore);
-
-                bool critical = absZScore >= rule.criticalZ;
-                bool warning = absZScore >= rule.warningZ;
+                const bool critical = absZScore >= rule.criticalZ;
+                const bool warning = absZScore >= rule.warningZ;
 
                 if (critical)
                 {
@@ -86,50 +104,11 @@ namespace anomaly_detection
                                                 rule.message));
                 }
 
-                /*
-                 * Always update stats after evaluation.
-                 *
-                 * Later, if you do not want anomalies to affect baseline,
-                 * you can choose to update only when not warning/critical.
-                 */
-                update_stats(stats, sample.value);
+                advance();
             }
         }
 
         return events;
-    }
-
-    void zScoreDetection::update_stats(runningStats& stats, double value)
-    {
-        /*
-         * Welford online algorithm.
-         *
-         * It updates mean and variance without storing all old samples.
-         */
-        stats.count++;
-
-        double delta = value - stats.mean;
-        stats.mean += delta / static_cast<double>(stats.count);
-
-        double delta2 = value - stats.mean;
-        stats.m2 += delta * delta2;
-    }
-
-    double zScoreDetection::stddev(const runningStats& stats) const
-    {
-        if (stats.count < 2)
-        {
-            return 0.0;
-        }
-
-        double variance = stats.m2 / static_cast<double>(stats.count - 1);
-
-        if (variance <= 0.0)
-        {
-            return 0.0;
-        }
-
-        return std::sqrt(variance);
     }
 
     anomalyEvent zScoreDetection::make_event(const metricSample& sample,
