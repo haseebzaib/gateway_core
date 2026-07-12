@@ -250,6 +250,19 @@ namespace module::message_protocol
         }
     }
 
+    void messageProtocol::send_rs232_sniffer_frame(const nlohmann::json& data)
+    {
+        nlohmann::json message = {
+            {"message_id", next_message_id()},
+            {"message_type", "rs232SnifferFrame"},
+            {"data", data}
+        };
+        std::string output = message.dump() + '\n';
+        std::vector<std::uint8_t> bytes(output.begin(), output.end());
+        std::lock_guard<std::mutex> lock(tx_mutex_);
+        tx_queue_.push_back(std::move(bytes));
+    }
+
 
     std::optional<std::vector<std::uint8_t>> messageProtocol::get_next_tx()
     {

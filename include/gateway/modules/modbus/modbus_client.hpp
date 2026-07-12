@@ -15,6 +15,8 @@ namespace module::modbus
     {
         Holding,
         Input,
+        Coil,
+        DiscreteInput,
     };
 
     enum class dataType
@@ -24,6 +26,7 @@ namespace module::modbus
         Int32,
         UInt32,
         Float32,
+        Bool,
     };
 
     enum class wordOrder

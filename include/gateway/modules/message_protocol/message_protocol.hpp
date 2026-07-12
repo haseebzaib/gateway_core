@@ -113,6 +113,7 @@ namespace module::message_protocol
 
     void send_device_data(deviceMetrics deviceData);
     void send_device_anomaly_data(const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents);
+    void send_rs232_sniffer_frame(const nlohmann::json& data);
 
     // Accepts arbitrary TCP chunks and extracts complete newline-delimited JSON
     // frames. Configuration frames are validated, queued, and ACKed/NACKed.

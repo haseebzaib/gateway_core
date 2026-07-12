@@ -312,8 +312,18 @@ namespace module::serial
 
         try
         {
+            if (!port_->IsDataAvailable())
+            {
+                return false;
+            }
+            const int available = port_->GetNumberOfBytesAvailable();
+            if (available <= 0)
+            {
+                return false;
+            }
             LibSerial::DataBuffer buffer;
-            port_->Read(buffer, maxBytes, rxTimeoutMs_);
+            const std::size_t bytesToRead = std::min<std::size_t>(maxBytes, static_cast<std::size_t>(available));
+            port_->Read(buffer, bytesToRead, rxTimeoutMs_);
             outData.assign(buffer.begin(), buffer.end());
             return !outData.empty();
         }

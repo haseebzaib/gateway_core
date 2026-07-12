@@ -28,6 +28,8 @@ namespace module::modbus
             case dataType::UInt32:
             case dataType::Float32:
                 return 2;
+            case dataType::Bool:
+                return 1;
             }
 
             return 1;
@@ -43,6 +45,16 @@ namespace module::modbus
             if (config.registerType_ == registerType::Input && config.address >= 30001)
             {
                 return config.address - 30001;
+            }
+
+            if (config.registerType_ == registerType::Coil && config.address >= 1 && config.address < 10000)
+            {
+                return config.address - 1;
+            }
+
+            if (config.registerType_ == registerType::DiscreteInput && config.address >= 10001)
+            {
+                return config.address - 10001;
             }
 
             return config.address;
@@ -75,6 +87,8 @@ namespace module::modbus
                 std::memcpy(&value, &rawValue, sizeof(value));
                 return static_cast<double>(value);
             }
+            case dataType::Bool:
+                return words[0] == 0 ? 0.0 : 1.0;
             }
 
             return 0.0;
@@ -255,6 +269,16 @@ namespace module::modbus
         case registerType::Input:
             readCount = modbus_read_input_registers(context_, address, count, rawWords);
             break;
+        case registerType::Coil:
+        case registerType::DiscreteInput:
+        {
+            std::uint8_t rawBit[1] {};
+            readCount = config.registerType_ == registerType::Coil
+                ? modbus_read_bits(context_, address, 1, rawBit)
+                : modbus_read_input_bits(context_, address, 1, rawBit);
+            rawWords[0] = rawBit[0];
+            break;
+        }
         }
 
         if (readCount != count)

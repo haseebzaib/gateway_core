@@ -5,6 +5,8 @@ add_library(core
 application.cpp
 interprocess.cpp
 sensorprocess.cpp
+sensor_config.cpp
+rs232_runtime.cpp
 deviceprocess.cpp
 
 )
@@ -24,5 +26,6 @@ target_link_libraries(core
         module_serial
         module_message_protocol
         module_modbus
+        module_dustrak
         module_anomaly_detection
 )
