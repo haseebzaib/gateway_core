@@ -34,11 +34,8 @@ namespace core
 
                     if (data.has_value())
                     {
-
-                        SPDLOG_INFO("Rx recived on wire {}", std::string_view(reinterpret_cast<const char *>(data->data()), data->size()));
+                        messageProtocol_.receive(*data);
                     }
-
-                    //  message_protocol.loop(*data);
 
                     while (auto tx = messageProtocol_.get_next_tx())
                     {

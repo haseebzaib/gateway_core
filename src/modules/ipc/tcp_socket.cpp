@@ -213,6 +213,8 @@ namespace module::ipc
             listen_fd_ = -1;
         }
         rx_buffer_.fill(0);
+        rx_size = 0;
+        rx_pos = 0;
         tx_queue_.clear();
         tx_offset_ = 0;
 
@@ -300,8 +302,17 @@ namespace module::ipc
 
             if (n > 0)
             {
-                std::copy(buffer, buffer + n, rx_buffer_.begin());
-                rx_size = n;
+                const std::size_t available = rx_buffer_.size() - rx_size;
+                const std::size_t count = std::min<std::size_t>(static_cast<std::size_t>(n), available);
+                std::copy(buffer, buffer + count, rx_buffer_.begin() + rx_size);
+                rx_size += count;
+                if (count < static_cast<std::size_t>(n))
+                {
+                    SPDLOG_ERROR("IPC receive buffer full; closing connection");
+                    close();
+                    state_ = state::error;
+                    return;
+                }
 
                 SPDLOG_INFO("Rx recived {}", std::string_view(reinterpret_cast<char *>(buffer), n));
             }

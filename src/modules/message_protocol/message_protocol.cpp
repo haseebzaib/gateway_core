@@ -1,4 +1,5 @@
 #include "gateway/modules/message_protocol/message_protocol.hpp"
+#include <stdexcept>
 
 namespace module::message_protocol
 {
@@ -27,6 +28,121 @@ namespace module::message_protocol
     }
     messageProtocol::~messageProtocol()
     {
+    }
+
+    void messageProtocol::receive(std::span<const std::uint8_t> bytes)
+    {
+        constexpr std::size_t maximum_frame_bytes = 1024 * 1024;
+        rx_buffer_.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        if (rx_buffer_.size() > maximum_frame_bytes)
+        {
+            rx_buffer_.clear();
+            nlohmann::json reply = {{"message_type", "nAck"}, {"error", "IPC frame exceeds maximum size"}};
+            std::string output = reply.dump() + '\n';
+            std::lock_guard<std::mutex> lock(tx_mutex_);
+            tx_queue_.emplace_front(output.begin(), output.end());
+            return;
+        }
+
+        std::size_t newline = 0;
+        while ((newline = rx_buffer_.find('\n')) != std::string::npos)
+        {
+            std::string frame = rx_buffer_.substr(0, newline);
+            rx_buffer_.erase(0, newline + 1);
+            if (!frame.empty() && frame.back() == '\r') frame.pop_back();
+            if (frame.empty()) continue;
+
+            std::string messageId;
+            try
+            {
+                const nlohmann::json message = nlohmann::json::parse(frame);
+                if (!message.is_object()) throw std::runtime_error("IPC message must be a JSON object");
+                messageId = message.value("message_id", std::string{});
+                const std::string type = message.value("message_type", std::string{});
+
+                const auto validate_payload = [&](const std::string& payloadKey) {
+                    if (!message.contains(payloadKey) || !message.at(payloadKey).is_object())
+                        throw std::runtime_error("Missing or invalid payload: " + payloadKey);
+                };
+
+                std::vector<std::string> payloadKeys;
+
+                if (type == "rs232Config" || type == "rs485ModbusConfig" || type == "tcpModbusConfig")
+                {
+                    validate_payload(type);
+                    payloadKeys.push_back(type);
+                }
+                else if (type == "combinedConfig")
+                {
+                    bool found = false;
+                    for (const std::string key : {"rs232Config", "rs485ModbusConfig", "tcpModbusConfig"})
+                    {
+                        if (message.contains(key)) { validate_payload(key); payloadKeys.push_back(key); found = true; }
+                    }
+                    if (!found) throw std::runtime_error("combinedConfig contains no supported configuration");
+                }
+                else
+                {
+                    throw std::runtime_error("Unsupported message_type: " + type);
+                }
+
+                bool duplicate = false;
+                {
+                    std::lock_guard<std::mutex> lock(config_mutex_);
+                    duplicate = !messageId.empty() && recent_message_id_set_.contains(messageId);
+                    if (!duplicate)
+                    {
+                        for (const std::string& key : payloadKeys)
+                            config_queue_.push({messageId, key, message.at(key)});
+                        if (!messageId.empty())
+                        {
+                            recent_message_ids_.push_back(messageId);
+                            recent_message_id_set_.insert(messageId);
+                            if (recent_message_ids_.size() > 256)
+                            {
+                                recent_message_id_set_.erase(recent_message_ids_.front());
+                                recent_message_ids_.pop_front();
+                            }
+                        }
+                    }
+                }
+
+                if (message.value("ack_required", false))
+                {
+                    nlohmann::json reply = {
+                        {"message_id", next_message_id()},
+                        {"message_type", "ack"},
+                        {"correlation_id", messageId},
+                        {"status", duplicate ? "duplicate" : "accepted"}
+                    };
+                    std::string output = reply.dump() + '\n';
+                    std::lock_guard<std::mutex> lock(tx_mutex_);
+                    tx_queue_.emplace_front(output.begin(), output.end());
+                }
+            }
+            catch (const std::exception& exception)
+            {
+                nlohmann::json reply = {
+                    {"message_id", next_message_id()},
+                    {"message_type", "nAck"},
+                    {"correlation_id", messageId},
+                    {"status", "rejected"},
+                    {"error", exception.what()}
+                };
+                std::string output = reply.dump() + '\n';
+                std::lock_guard<std::mutex> lock(tx_mutex_);
+                tx_queue_.emplace_front(output.begin(), output.end());
+            }
+        }
+    }
+
+    std::optional<messageProtocol::configMessage> messageProtocol::get_next_config()
+    {
+        std::lock_guard<std::mutex> lock(config_mutex_);
+        if (config_queue_.empty()) return std::nullopt;
+        configMessage config = std::move(config_queue_.front());
+        config_queue_.pop();
+        return config;
     }
 
     void messageProtocol::send_device_data(deviceMetrics deviceData)
@@ -67,7 +183,7 @@ namespace module::message_protocol
 
         {
             std::lock_guard<std::mutex> lock(tx_mutex_);
-            tx_queue_.push(std::move(bytes));
+            tx_queue_.push_back(std::move(bytes));
         }
     }
 
@@ -130,7 +246,7 @@ namespace module::message_protocol
 
         {
             std::lock_guard<std::mutex> lock(tx_mutex_);
-            tx_queue_.push(std::move(bytes));
+            tx_queue_.push_back(std::move(bytes));
         }
     }
 
@@ -145,7 +261,7 @@ namespace module::message_protocol
         }
 
         auto data = std::move(tx_queue_.front());
-        tx_queue_.pop();
+        tx_queue_.pop_front();
 
         return data;
     }

@@ -15,6 +15,8 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+#include <deque>
+#include <unordered_set>
 #include <cstdint>
 #include "gateway/modules/anomaly_detection/event.hpp"
 #include "gateway/utils/thirdparty/json.hpp"
@@ -55,6 +57,13 @@ namespace module::message_protocol
   class messageProtocol
   {
   public:
+    struct configMessage
+    {
+      std::string messageId {};
+      std::string messageType {};
+      nlohmann::json payload {};
+    };
+
     struct deviceMetrics
     {
       std::uint64_t timestamp_ms;
@@ -105,15 +114,24 @@ namespace module::message_protocol
     void send_device_data(deviceMetrics deviceData);
     void send_device_anomaly_data(const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents);
 
+    // Accepts arbitrary TCP chunks and extracts complete newline-delimited JSON
+    // frames. Configuration frames are validated, queued, and ACKed/NACKed.
+    void receive(std::span<const std::uint8_t> bytes);
+    std::optional<configMessage> get_next_config();
+
     std::optional<std::vector<std::uint8_t>> get_next_tx();
 
   private:
     std::uint64_t next_message_id();
 
     std::mutex tx_mutex_;
-    std::queue<std::vector<std::uint8_t>> tx_queue_;
+    std::mutex config_mutex_;
+    std::deque<std::vector<std::uint8_t>> tx_queue_;
     std::queue<std::vector<std::uint8_t>> rx_queue_;
     std::queue<std::vector<std::uint8_t>> ack_required_queue_;
+    std::queue<configMessage> config_queue_;
+    std::deque<std::string> recent_message_ids_;
+    std::unordered_set<std::string> recent_message_id_set_;
 
     std::string rx_buffer_;
 
