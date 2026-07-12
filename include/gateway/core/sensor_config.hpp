@@ -2,6 +2,7 @@
 
 #include "gateway/modules/dustrak/drx_85xx.hpp"
 #include "gateway/modules/serial/serial.hpp"
+#include "gateway/modules/modbus/modbus_client.hpp"
 #include "gateway/utils/thirdparty/json.hpp"
 #include <cstddef>
 #include <string>
@@ -43,8 +44,26 @@ namespace core::sensorprocess
         nlohmann::json source {};
     };
 
+    struct rs485Config
+    {
+        std::string portName {};
+        bool enabled {false};
+        module::modbus::rtuConfig modbus {};
+    };
+
+    struct modbusTcpConnectionConfig
+    {
+        bool enabled {false};
+        module::modbus::tcpConfig modbus {};
+    };
+
     rs232Config parse_rs232_port_config(
         const std::string& portName,
         const std::string& devicePath,
         const nlohmann::json& payload);
+    rs485Config parse_rs485_port_config(
+        const std::string& portName,
+        const std::string& devicePath,
+        const nlohmann::json& payload);
+    modbusTcpConnectionConfig parse_modbus_tcp_config(const nlohmann::json& payload);
 }

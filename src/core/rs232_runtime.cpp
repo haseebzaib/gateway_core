@@ -96,6 +96,7 @@ namespace core::sensorprocess
         dustrak_.reset();
         serial_.close();
         snifferBuffer_.clear();
+        lastPublishedMeasurementMs_ = 0;
     }
 
     void rs232Runtime::loop()
@@ -108,6 +109,16 @@ namespace core::sensorprocess
         }
         std::string packet;
         dustrak_->loop(packet);
+        const std::int64_t measurementTimestamp = dustrak_->last_measurement_timestamp_ms();
+        if (measurementTimestamp > 0 && measurementTimestamp != lastPublishedMeasurementMs_ && !packet.empty())
+        {
+            const nlohmann::json payload = nlohmann::json::parse(packet, nullptr, false);
+            if (!payload.is_discarded())
+            {
+                protocol_.send_sensor_payload("rs232Sensor", config_.portName, payload);
+                lastPublishedMeasurementMs_ = measurementTimestamp;
+            }
+        }
     }
 
     const std::string& rs232Runtime::port_name() const

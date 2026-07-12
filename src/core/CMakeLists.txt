@@ -7,6 +7,7 @@ interprocess.cpp
 sensorprocess.cpp
 sensor_config.cpp
 rs232_runtime.cpp
+modbus_runtime.cpp
 deviceprocess.cpp
 
 )

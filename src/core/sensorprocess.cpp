@@ -1,6 +1,7 @@
 #include "gateway/core/sensorprocess.hpp"
 #include "gateway/core/interprocess.hpp"
 #include "gateway/core/rs232_runtime.hpp"
+#include "gateway/core/modbus_runtime.hpp"
 #include "gateway/core/sensor_config.hpp"
 #include "spdlog/spdlog.h"
 #include <array>
@@ -8,6 +9,8 @@
 #include <cstdlib>
 #include <string>
 #include <thread>
+#include <memory>
+#include <unordered_map>
 
 namespace core::sensorprocess
 {
@@ -50,6 +53,46 @@ namespace core::sensorprocess
             }
             SPDLOG_INFO("Applied RS232 config message {}", message.messageId);
         }
+
+        void apply_rs485_config(
+            const module::message_protocol::messageProtocol::configMessage& message,
+            std::array<std::unique_ptr<modbusRuntime>, 2>& runtimes)
+        {
+            if (!message.payload.contains("rs485") || !message.payload.at("rs485").is_object())
+                throw std::runtime_error("rs485ModbusConfig.rs485 must be an object");
+            const nlohmann::json& ports = message.payload.at("rs485");
+            const std::array<portDefinition, 2> definitions {{
+                {"port_2", environment_or("GATEWAY_RS485_PORT_2_DEVICE", "/dev/ttyAMA4")},
+                {"port_3", environment_or("GATEWAY_RS485_PORT_3_DEVICE", "/dev/ttyAMA0")},
+            }};
+            for (std::size_t index = 0; index < definitions.size(); ++index)
+            {
+                if (!ports.contains(definitions[index].name)) continue;
+                runtimes[index]->apply_rtu(parse_rs485_port_config(
+                    definitions[index].name, definitions[index].devicePath, ports.at(definitions[index].name)));
+            }
+            SPDLOG_INFO("Applied RS485 Modbus config message {}", message.messageId);
+        }
+
+        void apply_modbus_tcp_config(
+            const module::message_protocol::messageProtocol::configMessage& message,
+            std::unordered_map<std::string, std::unique_ptr<modbusRuntime>>& runtimes)
+        {
+            if (!message.payload.contains("connections") || !message.payload.at("connections").is_array())
+                throw std::runtime_error("tcpModbusConfig.connections must be an array");
+            std::unordered_map<std::string, std::unique_ptr<modbusRuntime>> replacements;
+            for (const nlohmann::json& item : message.payload.at("connections"))
+            {
+                modbusTcpConnectionConfig config = parse_modbus_tcp_config(item);
+                if (replacements.contains(config.modbus.id))
+                    throw std::runtime_error("Duplicate Modbus TCP connection id: " + config.modbus.id);
+                auto runtime = std::make_unique<modbusRuntime>(core::interprocess::messageProtocol_);
+                runtime->apply_tcp(config);
+                replacements.emplace(config.modbus.id, std::move(runtime));
+            }
+            runtimes = std::move(replacements);
+            SPDLOG_INFO("Applied Modbus TCP config message {} connections={}", message.messageId, runtimes.size());
+        }
     }
 
     void main()
@@ -58,6 +101,11 @@ namespace core::sensorprocess
             rs232Runtime{core::interprocess::messageProtocol_},
             rs232Runtime{core::interprocess::messageProtocol_},
         }};
+        std::array<std::unique_ptr<modbusRuntime>, 2> rtuRuntimes {{
+            std::make_unique<modbusRuntime>(core::interprocess::messageProtocol_),
+            std::make_unique<modbusRuntime>(core::interprocess::messageProtocol_),
+        }};
+        std::unordered_map<std::string, std::unique_ptr<modbusRuntime>> tcpRuntimes;
         SPDLOG_INFO("Sensor process thread running");
 
         while (true)
@@ -68,8 +116,12 @@ namespace core::sensorprocess
                 {
                     if (message->messageType == "rs232Config")
                         apply_rs232_config(*message, runtimes);
+                    else if (message->messageType == "rs485ModbusConfig")
+                        apply_rs485_config(*message, rtuRuntimes);
+                    else if (message->messageType == "tcpModbusConfig")
+                        apply_modbus_tcp_config(*message, tcpRuntimes);
                     else
-                        SPDLOG_INFO("Queued {} for a future sensor runtime", message->messageType);
+                        SPDLOG_WARN("Unsupported queued sensor config {}", message->messageType);
                 }
                 catch (const std::exception& exception)
                 {

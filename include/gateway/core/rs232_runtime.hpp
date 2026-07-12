@@ -33,5 +33,6 @@ namespace core::sensorprocess
         std::vector<std::uint8_t> snifferBuffer_ {};
         std::chrono::steady_clock::time_point lastByteAt_ {};
         bool running_ {false};
+        std::int64_t lastPublishedMeasurementMs_ {0};
     };
 }

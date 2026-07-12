@@ -1,5 +1,6 @@
 #include "gateway/modules/message_protocol/message_protocol.hpp"
 #include <stdexcept>
+#include <chrono>
 
 namespace module::message_protocol
 {
@@ -261,6 +262,76 @@ namespace module::message_protocol
         std::vector<std::uint8_t> bytes(output.begin(), output.end());
         std::lock_guard<std::mutex> lock(tx_mutex_);
         tx_queue_.push_back(std::move(bytes));
+    }
+
+    void messageProtocol::send_modbus_samples(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const std::vector<module::modbus::sample>& samples,
+        const std::vector<module::modbus::readError>& errors,
+        bool success)
+    {
+        nlohmann::json values = nlohmann::json::array();
+        for (const auto& sample : samples)
+            values.push_back({{"name", sample.name}, {"value", sample.value}, {"unit", sample.unit}, {"address", sample.source.address}});
+        nlohmann::json failures = nlohmann::json::array();
+        for (const auto& error : errors)
+            failures.push_back({{"name", error.name}, {"error", error.message}, {"address", error.source.address}});
+        nlohmann::json message = {
+            {"message_id", next_message_id()},
+            {"message_type", "sensorData"},
+            {"data", {
+                {"source_type", sourceType},
+                {"source_id", sourceId},
+                {"timestamp_ms", static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count())},
+                {"ok", success},
+                {"samples", std::move(values)},
+                {"errors", std::move(failures)}
+            }}
+        };
+        std::string output = message.dump() + '\n';
+        std::lock_guard<std::mutex> lock(tx_mutex_);
+        tx_queue_.emplace_back(output.begin(), output.end());
+    }
+
+    void messageProtocol::send_modbus_status(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        std::string_view status,
+        std::string_view error)
+    {
+        nlohmann::json message = {
+            {"message_id", next_message_id()},
+            {"message_type", "sensorStatus"},
+            {"data", {{"source_type", sourceType}, {"source_id", sourceId}, {"status", status}, {"error", error}}}
+        };
+        std::string output = message.dump() + '\n';
+        std::lock_guard<std::mutex> lock(tx_mutex_);
+        tx_queue_.emplace_back(output.begin(), output.end());
+    }
+
+    void messageProtocol::send_sensor_payload(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const nlohmann::json& payload,
+        bool success)
+    {
+        nlohmann::json message = {
+            {"message_id", next_message_id()},
+            {"message_type", "sensorData"},
+            {"data", {
+                {"source_type", sourceType},
+                {"source_id", sourceId},
+                {"timestamp_ms", static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count())},
+                {"ok", success},
+                {"payload", payload}
+            }}
+        };
+        std::string output = message.dump() + '\n';
+        std::lock_guard<std::mutex> lock(tx_mutex_);
+        tx_queue_.emplace_back(output.begin(), output.end());
     }
 
 

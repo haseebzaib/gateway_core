@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include <cstdint>
 #include "gateway/modules/anomaly_detection/event.hpp"
+#include "gateway/modules/modbus/modbus_client.hpp"
 #include "gateway/utils/thirdparty/json.hpp"
 
 /**
@@ -114,6 +115,22 @@ namespace module::message_protocol
     void send_device_data(deviceMetrics deviceData);
     void send_device_anomaly_data(const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents);
     void send_rs232_sniffer_frame(const nlohmann::json& data);
+    void send_modbus_samples(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const std::vector<module::modbus::sample>& samples,
+        const std::vector<module::modbus::readError>& errors,
+        bool success);
+    void send_modbus_status(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        std::string_view status,
+        std::string_view error = {});
+    void send_sensor_payload(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const nlohmann::json& payload,
+        bool success = true);
 
     // Accepts arbitrary TCP chunks and extracts complete newline-delimited JSON
     // frames. Configuration frames are validated, queued, and ACKed/NACKed.
