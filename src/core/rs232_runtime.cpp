@@ -2,9 +2,6 @@
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -39,15 +36,6 @@ namespace core::sensorprocess
             return output.str();
         }
 
-        std::string utc_date()
-        {
-            const std::time_t now = std::time(nullptr);
-            std::tm value {};
-            gmtime_r(&now, &value);
-            std::ostringstream output;
-            output << std::put_time(&value, "%Y-%m-%d");
-            return output.str();
-        }
     }
 
     rs232Runtime::rs232Runtime(module::message_protocol::messageProtocol& protocol)
@@ -201,32 +189,5 @@ namespace core::sensorprocess
             {"hex", hex_text(frame)}
         };
         protocol_.send_rs232_sniffer_frame(data);
-        if (config_.sniffer.capture.enabled) capture_frame(data);
-    }
-
-    void rs232Runtime::capture_frame(const nlohmann::json& frame) const
-    {
-        try
-        {
-            const char* configuredRoot = std::getenv("GATEWAY_INTERFACES_CAPTURE_DIR");
-            const std::filesystem::path root = configuredRoot && *configuredRoot
-                ? configuredRoot : "/opt/metacrust/data/gateway_interfaces/rs232";
-            const std::filesystem::path directory = root / config_.portName;
-            std::filesystem::create_directories(directory);
-            const std::filesystem::path path = directory / (utc_date() + ".jsonl");
-            const std::uintmax_t maximum = static_cast<std::uintmax_t>(config_.sniffer.capture.maxSizeMb) * 1024 * 1024;
-            if (std::filesystem::exists(path) && std::filesystem::file_size(path) >= maximum)
-            {
-                SPDLOG_WARN("RS232 {} capture file reached {} MB; frame not persisted", config_.portName, config_.sniffer.capture.maxSizeMb);
-                return;
-            }
-            std::ofstream output(path, std::ios::app);
-            if (!output) throw std::runtime_error("cannot open " + path.string());
-            output << frame.dump() << '\n';
-        }
-        catch (const std::exception& exception)
-        {
-            SPDLOG_ERROR("RS232 {} capture failed: {}", config_.portName, exception.what());
-        }
     }
 }

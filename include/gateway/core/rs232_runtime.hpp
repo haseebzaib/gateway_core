@@ -24,8 +24,6 @@ namespace core::sensorprocess
         void loop_sniffer();
         void process_sniffer_buffer(bool idleExpired);
         void emit_frame(std::vector<std::uint8_t> frame);
-        void capture_frame(const nlohmann::json& frame) const;
-
         module::message_protocol::messageProtocol& protocol_;
         rs232Config config_ {};
         module::serial::serialPort serial_ {};

@@ -140,10 +140,6 @@ namespace core::sensorprocess
         config.sniffer.idleGapMs = std::clamp(sniffer.value("idle_gap_ms", 100), 1, 60000);
         config.sniffer.timestamp = sniffer.value("timestamp", true);
         config.sniffer.maxLiveBufferBytes = std::clamp<std::size_t>(sniffer.value("max_live_buffer_bytes", 1024U * 1024U), 4096, 16U * 1024U * 1024U);
-        const nlohmann::json capture = sniffer.value("capture", nlohmann::json::object());
-        config.sniffer.capture.enabled = capture.value("enabled", false);
-        config.sniffer.capture.retentionDays = std::clamp(capture.value("retention_days", 7), 1, 365);
-        config.sniffer.capture.maxSizeMb = std::clamp(capture.value("max_size_mb", 100), 1, 10240);
         return config;
     }
 

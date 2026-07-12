@@ -12,13 +12,6 @@ namespace core::sensorprocess
     enum class rs232Mode { Sensor, Sniffer };
     enum class snifferFraming { Raw, Line, FixedLength, IdleGap };
 
-    struct snifferCaptureConfig
-    {
-        bool enabled {false};
-        int retentionDays {7};
-        int maxSizeMb {100};
-    };
-
     struct snifferConfig
     {
         std::string displayFormat {"ascii_hex"};
@@ -28,7 +21,6 @@ namespace core::sensorprocess
         int idleGapMs {100};
         bool timestamp {true};
         std::size_t maxLiveBufferBytes {1024 * 1024};
-        snifferCaptureConfig capture {};
     };
 
     struct rs232Config
