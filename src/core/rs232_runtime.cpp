@@ -103,7 +103,9 @@ namespace core::sensorprocess
             const nlohmann::json payload = nlohmann::json::parse(packet, nullptr, false);
             if (!payload.is_discarded())
             {
+                SPDLOG_INFO("rs232Sensor {} reading {}", config_.portName, payload.dump());
                 protocol_.send_sensor_payload("rs232Sensor", config_.portName, payload);
+                SPDLOG_INFO("rs232Sensor {} forwarded to hub", config_.portName);
                 lastPublishedMeasurementMs_ = measurementTimestamp;
             }
         }
@@ -180,14 +182,17 @@ namespace core::sensorprocess
     void rs232Runtime::emit_frame(std::vector<std::uint8_t> frame)
     {
         if (frame.empty()) return;
+        const std::string hex = hex_text(frame);
         nlohmann::json data = {
             {"port", config_.portName},
             {"device_path", config_.devicePath},
             {"timestamp_ms", timestamp_ms()},
             {"size", frame.size()},
             {"ascii", ascii_text(frame)},
-            {"hex", hex_text(frame)}
+            {"hex", hex}
         };
+        SPDLOG_INFO("rs232Sniffer {} frame size={} hex={}", config_.portName, frame.size(), hex);
         protocol_.send_rs232_sniffer_frame(data);
+        SPDLOG_INFO("rs232Sniffer {} forwarded to hub", config_.portName);
     }
 }

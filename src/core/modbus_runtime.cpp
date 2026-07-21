@@ -2,6 +2,7 @@
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <chrono>
+#include <sstream>
 #include <thread>
 
 namespace core::sensorprocess
@@ -94,7 +95,27 @@ namespace core::sensorprocess
             {
                 std::vector<module::modbus::sample> samples;
                 const bool success = client.poll(samples);
+
+                if (success)
+                {
+                    std::ostringstream summary;
+                    for (const auto& sample : samples)
+                    {
+                        summary << ' ' << sample.name << '=' << sample.value << sample.unit;
+                    }
+                    SPDLOG_INFO("{} {} poll ok samples={}{}", sourceType, sourceId, samples.size(), summary.str());
+                }
+                else
+                {
+                    for (const auto& error : client.last_errors())
+                    {
+                        SPDLOG_WARN("{} {} poll failed register={} address={} error={}",
+                            sourceType, sourceId, error.name, error.source.address, error.message);
+                    }
+                }
+
                 protocol_.send_modbus_samples(sourceType, sourceId, samples, client.last_errors(), success);
+                SPDLOG_INFO("{} {} forwarded {} sample(s) to hub (ok={})", sourceType, sourceId, samples.size(), success);
                 if (client.connection_lost())
                 {
                     client.disconnect();
