@@ -341,7 +341,12 @@ namespace core::deviceprocess
         {
             deltaRules.clear();
 
-            delta_rule_creator("cpu.usage", 50.0, 75.0, true, 5000,
+            /*
+             * CM5 idles around 8-17% with routine benign bursts (redis bgsave,
+             * journal flush, timers) that can jump 40-50 points for a second.
+             * Require a bigger jump so only genuinely abnormal spikes flag.
+             */
+            delta_rule_creator("cpu.usage", 60.0, 85.0, true, 5000,
                                "CPU usage jumped sharply between samples. Check for sudden workload spikes.");
             delta_rule_creator("cpu.temp", 8.0, 15.0, true, 5000,
                                "CPU temperature jumped sharply. Check fan/heatsink contact, enclosure airflow, or sudden CPU load.");
@@ -379,7 +384,13 @@ namespace core::deviceprocess
             // minAbsDelta is in the metric's own units (%, °C, load) and is the
             // real gap from baseline needed before a z-score can fire, so idle
             // noise (e.g. CPU wobbling 1-10%) is ignored.
-            z_score_rule_creator("cpu.usage", 3.0, 5.0, 30, 2.0, 20.0,
+            /*
+             * CPU on the CM5 idles low (~8-17%) with a small stddev, so brief
+             * benign bursts to ~40% clear a 20-point gap and look "unusual".
+             * A 60-sample (1 min) window + 30-point absolute gap means only
+             * sustained, genuinely abnormal activity flags.
+             */
+            z_score_rule_creator("cpu.usage", 3.0, 5.0, 60, 2.0, 30.0,
                                  "CPU usage is unusual compared with the learned device baseline.");
             z_score_rule_creator("cpu.temp", 3.0, 5.0, 30, 1.0, 8.0,
                                  "CPU temperature is unusual compared with the learned device baseline.");
