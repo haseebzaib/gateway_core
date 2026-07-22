@@ -36,6 +36,43 @@ namespace core::sensorprocess
             return output.str();
         }
 
+        // DustTrak measurement readings are a POSITIONAL array with no field
+        // names (build_json_packet() in drx_85xx.cpp); index meaning comes
+        // from the `channel` enum there: PM1=0, PM25=1, RespirablePM4=2,
+        // PM10=3, Total=4 (5-channel DRX 8533/8534). Older DustTrak II
+        // 8530/8532 report a single mass channel only. Anything else is
+        // unexpected — name defensively by index rather than guess wrong.
+        std::vector<anomaly_detection::metricSample> extract_dustrak_samples(const nlohmann::json& payload)
+        {
+            std::vector<anomaly_detection::metricSample> samples;
+            if (!payload.contains("measurement") || !payload.at("measurement").is_object())
+                return samples;
+
+            const nlohmann::json& measurement = payload.at("measurement");
+            if (!measurement.contains("values_mg_m3") || !measurement.at("values_mg_m3").is_array())
+                return samples;
+
+            const nlohmann::json& values = measurement.at("values_mg_m3");
+            static constexpr const char* speciesNames[5] = {"pm1", "pm25", "pm4", "pm10", "total"};
+            const std::uint64_t nowMs = static_cast<std::uint64_t>(timestamp_ms());
+
+            for (std::size_t index = 0; index < values.size(); ++index)
+            {
+                if (!values[index].is_number()) continue;
+                std::string name;
+                if (values.size() == 5) name = speciesNames[index];
+                else if (values.size() == 1) name = "mass";
+                else name = "channel_" + std::to_string(index);
+
+                samples.push_back({
+                    .name = std::move(name),
+                    .value = values[index].get<double>(),
+                    .timestamp_ms = nowMs,
+                    .type = anomaly_detection::metricType::Gauge,
+                });
+            }
+            return samples;
+        }
     }
 
     rs232Runtime::rs232Runtime(module::message_protocol::messageProtocol& protocol)
@@ -107,6 +144,7 @@ namespace core::sensorprocess
                 protocol_.send_sensor_payload("rs232Sensor", config_.portName, payload);
                 SPDLOG_INFO("rs232Sensor {} forwarded to hub", config_.portName);
                 lastPublishedMeasurementMs_ = measurementTimestamp;
+                evaluate_anomalies(extract_dustrak_samples(payload));
             }
         }
     }
@@ -114,6 +152,52 @@ namespace core::sensorprocess
     const std::string& rs232Runtime::port_name() const
     {
         return config_.portName;
+    }
+
+    void rs232Runtime::apply_anomaly_rules(const nlohmann::json& payload)
+    {
+        const sensorAnomalyConfig config = parse_sensor_anomaly_config(payload);
+
+        std::vector<std::unique_ptr<anomaly_detection::baseDetector>> detectors;
+        detectors.push_back(std::make_unique<anomaly_detection::thresholdDetector>(config.thresholdRules));
+        detectors.push_back(std::make_unique<anomaly_detection::rangeCheckDetector>(config.rangeRules));
+        detectors.push_back(std::make_unique<anomaly_detection::deltaDetection>(config.deltaRules));
+        detectors.push_back(std::make_unique<anomaly_detection::slopeDetection>(config.slopeRules));
+        detectors.push_back(std::make_unique<anomaly_detection::zScoreDetection>(config.zScoreRules));
+        detectors.push_back(std::make_unique<anomaly_detection::timeoutDetector>(config.timeoutRules));
+        detectors.push_back(std::make_unique<anomaly_detection::multiConditionDetector>(config.multiConditionRules));
+
+        std::lock_guard<std::mutex> lock(anomalyMutex_);
+        anomalyDetectors_ = std::move(detectors);
+        SPDLOG_INFO("{} {} anomaly rules applied (threshold={} range={} delta={} slope={} z_score={} timeout={} multi_condition={})",
+            config.sourceType, config.sourceId,
+            config.thresholdRules.size(), config.rangeRules.size(), config.deltaRules.size(),
+            config.slopeRules.size(), config.zScoreRules.size(), config.timeoutRules.size(),
+            config.multiConditionRules.size());
+    }
+
+    void rs232Runtime::evaluate_anomalies(const std::vector<anomaly_detection::metricSample>& samples)
+    {
+        if (samples.empty()) return;
+
+        anomaly_detection::metricSnapshot snapshot;
+        snapshot.timestamp_ms = samples.front().timestamp_ms;
+        snapshot.samples = samples;
+
+        std::vector<anomaly_detection::anomalyEvent> allEvents;
+        {
+            std::lock_guard<std::mutex> lock(anomalyMutex_);
+            for (const std::unique_ptr<anomaly_detection::baseDetector>& detector : anomalyDetectors_)
+            {
+                std::vector<anomaly_detection::anomalyEvent> events = detector->update(snapshot);
+                allEvents.insert(allEvents.end(), events.begin(), events.end());
+            }
+        }
+
+        if (!allEvents.empty())
+        {
+            protocol_.send_sensor_anomaly_data("rs232Sensor", config_.portName, allEvents);
+        }
     }
 
     void rs232Runtime::loop_sniffer()

@@ -131,6 +131,10 @@ namespace module::message_protocol
         std::string_view sourceId,
         const nlohmann::json& payload,
         bool success = true);
+    void send_sensor_anomaly_data(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents);
 
     // Accepts arbitrary TCP chunks and extracts complete newline-delimited JSON
     // frames. Configuration frames are validated, queued, and ACKed/NACKed.

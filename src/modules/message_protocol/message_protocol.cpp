@@ -68,7 +68,7 @@ namespace module::message_protocol
 
                 std::vector<std::string> payloadKeys;
 
-                if (type == "rs232Config" || type == "rs485ModbusConfig" || type == "tcpModbusConfig")
+                if (type == "rs232Config" || type == "rs485ModbusConfig" || type == "tcpModbusConfig" || type == "sensorAnomalyConfig")
                 {
                     validate_payload(type);
                     payloadKeys.push_back(type);
@@ -236,6 +236,74 @@ namespace module::message_protocol
         msg["message_id"] = next_message_id();
         msg["message_type"] = messageType::deviceAnamoly;
         msg["data"] = {
+            {"timestamp_ms", latestTimestampMs},
+            {"event_count", anomalyEvents.size()},
+            {"events", std::move(events)}
+        };
+
+        std::string out = msg.dump();
+        out.push_back('\n');
+        std::vector<std::uint8_t> bytes(out.begin(), out.end());
+
+        {
+            std::lock_guard<std::mutex> lock(tx_mutex_);
+            tx_queue_.push_back(std::move(bytes));
+        }
+    }
+
+    void messageProtocol::send_sensor_anomaly_data(
+        std::string_view sourceType,
+        std::string_view sourceId,
+        const std::vector<anomaly_detection::anomalyEvent>& anomalyEvents)
+    {
+        if (anomalyEvents.empty())
+        {
+            return;
+        }
+
+        nlohmann::json events = nlohmann::json::array();
+        std::uint64_t latestTimestampMs = 0;
+
+        for (const anomaly_detection::anomalyEvent& event : anomalyEvents)
+        {
+            if (event.timestamp_ms > latestTimestampMs)
+            {
+                latestTimestampMs = event.timestamp_ms;
+            }
+
+            events.push_back({
+                {"timestamp_ms", event.timestamp_ms},
+                {"detectorName", event.detectorName},
+                {"metricName", event.metricName},
+                {"severity", std::string{severity_text(event.severity_)}},
+                {"value", event.value},
+                {"zScore", event.zScore},
+                {"deltaValue", event.deltaValue},
+                {"slopeValue", event.slopeValue},
+                {"message", event.message},
+                {"criticalLimit", event.criticalLimit},
+                {"warningLimit", event.warningLimit},
+                {"minValue", event.minValue},
+                {"maxValue", event.maxValue},
+                {"warningDelta", event.warningDelta},
+                {"criticalDelta", event.criticalDelta},
+                {"warningSlopePerMin", event.warningSlopePerMin},
+                {"criticalSlopePerMin", event.criticalSlopePerMin},
+                {"triggerPositive", event.triggerPositive},
+                {"alarmName", event.alarmName},
+                {"warningZ", event.warningZ},
+                {"criticalZ", event.criticalZ},
+                {"slopeWindowMs", event.slopeWindowMs},
+                {"timeoutMs", event.timeoutMs}
+            });
+        }
+
+        nlohmann::json msg;
+        msg["message_id"] = next_message_id();
+        msg["message_type"] = "sensorAnomaly";
+        msg["data"] = {
+            {"source_type", sourceType},
+            {"source_id", sourceId},
             {"timestamp_ms", latestTimestampMs},
             {"event_count", anomalyEvents.size()},
             {"events", std::move(events)}

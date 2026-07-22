@@ -48,12 +48,69 @@ namespace core::sensorprocess
         worker_.join();
     }
 
+    void modbusRuntime::apply_anomaly_rules(const nlohmann::json& payload)
+    {
+        const sensorAnomalyConfig config = parse_sensor_anomaly_config(payload);
+
+        std::vector<std::unique_ptr<anomaly_detection::baseDetector>> detectors;
+        detectors.push_back(std::make_unique<anomaly_detection::thresholdDetector>(config.thresholdRules));
+        detectors.push_back(std::make_unique<anomaly_detection::rangeCheckDetector>(config.rangeRules));
+        detectors.push_back(std::make_unique<anomaly_detection::deltaDetection>(config.deltaRules));
+        detectors.push_back(std::make_unique<anomaly_detection::slopeDetection>(config.slopeRules));
+        detectors.push_back(std::make_unique<anomaly_detection::zScoreDetection>(config.zScoreRules));
+        detectors.push_back(std::make_unique<anomaly_detection::timeoutDetector>(config.timeoutRules));
+        detectors.push_back(std::make_unique<anomaly_detection::multiConditionDetector>(config.multiConditionRules));
+
+        std::lock_guard<std::mutex> lock(anomalyMutex_);
+        anomalyDetectors_ = std::move(detectors);
+        SPDLOG_INFO("{} {} anomaly rules applied (threshold={} range={} delta={} slope={} z_score={} timeout={} multi_condition={})",
+            config.sourceType, config.sourceId,
+            config.thresholdRules.size(), config.rangeRules.size(), config.deltaRules.size(),
+            config.slopeRules.size(), config.zScoreRules.size(), config.timeoutRules.size(),
+            config.multiConditionRules.size());
+    }
+
+    void modbusRuntime::evaluate_anomalies(
+        const std::string& sourceType,
+        const std::string& sourceId,
+        const std::vector<module::modbus::sample>& samples)
+    {
+        anomaly_detection::metricSnapshot snapshot;
+        snapshot.timestamp_ms = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+        for (const module::modbus::sample& sample : samples)
+        {
+            snapshot.samples.push_back({
+                .name = sample.name,
+                .value = sample.value,
+                .timestamp_ms = snapshot.timestamp_ms,
+                .type = anomaly_detection::metricType::Gauge,
+            });
+        }
+
+        std::vector<anomaly_detection::anomalyEvent> allEvents;
+        {
+            std::lock_guard<std::mutex> lock(anomalyMutex_);
+            for (const std::unique_ptr<anomaly_detection::baseDetector>& detector : anomalyDetectors_)
+            {
+                std::vector<anomaly_detection::anomalyEvent> events = detector->update(snapshot);
+                allEvents.insert(allEvents.end(), events.begin(), events.end());
+            }
+        }
+
+        if (!allEvents.empty())
+        {
+            protocol_.send_sensor_anomaly_data(sourceType, sourceId, allEvents);
+        }
+    }
+
     void modbusRuntime::start(
         std::string sourceType,
         std::string sourceId,
         std::chrono::milliseconds pollInterval,
         std::function<bool(module::modbus::client&)> connect)
     {
+        sourceId_ = sourceId;
         worker_ = std::jthread(
             [this, sourceType = std::move(sourceType), sourceId = std::move(sourceId), pollInterval, connect = std::move(connect)](std::stop_token token) mutable {
                 run(token, std::move(sourceType), std::move(sourceId), pollInterval, std::move(connect));
@@ -116,6 +173,10 @@ namespace core::sensorprocess
 
                 protocol_.send_modbus_samples(sourceType, sourceId, samples, client.last_errors(), success);
                 SPDLOG_INFO("{} {} forwarded {} sample(s) to hub (ok={})", sourceType, sourceId, samples.size(), success);
+                if (success)
+                {
+                    evaluate_anomalies(sourceType, sourceId, samples);
+                }
                 if (client.connection_lost())
                 {
                     client.disconnect();
